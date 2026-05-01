@@ -1,44 +1,23 @@
-import React from 'react';
-import { StyleSheet, Text, View, Image, SafeAreaView } from 'react-native';
-import { COLORS } from '../../theme/colors';
-import CustomButton from '../../components/ui/CustomButton';
+import React from "react";
+import { StyleSheet, Text, View, Image, SafeAreaView } from "react-native";
+import { COLORS } from "../../theme/colors";
+import CustomButton from "../../components/ui/CustomButton";
 
-export default function WelcomeScreen() {
+export default function WelcomeScreen({ navigation }) {
   return (
     // SafeAreaView zorgt dat de app niet onder de 'notch' van je iPhone of Android verdwijnt
     <SafeAreaView style={styles.container}>
-      
       {/* Top sectie met teksten */}
       <View style={styles.headerContainer}>
         <Text style={styles.title}>MyPace</Text>
-        <Text style={styles.tagline}>
-          Start your crew. Run together, without the pressure.
-        </Text>
       </View>
-
-      {/* Midden sectie met de Mascotte */}
-      <View style={styles.imageContainer}>
-        <Image 
-          source={require('../../assets/images/mascot.png')} 
-          style={styles.mascotImage}
-          resizeMode="contain"
-        />
-      </View>
-
-      {/* Onderste sectie met knoppen met de nieuwe CustomComponent */}
       <View style={styles.buttonContainer}>
-        <CustomButton 
-          title="Create Account" 
-          type="primary" 
-          onPress={() => console.log('Naar registratie!')} 
-        />
-        <CustomButton 
-          title="Log In" 
-          type="secondary" 
-          onPress={() => console.log('Naar login!')} 
-        />
+        <Text style={styles.sectionLabel}>Already have an account?</Text>
+        <CustomButton title="Log In" type="secondary" onPress={() => console.log("Naar login!")} />
+        <View style={{ height: 30 }} />
+        <Text style={styles.sectionLabel}>New to MyPace?</Text>
+        <CustomButton title="Get Started" type="primary" onPress={() => navigation.navigate("MeetBuddy")} />
       </View>
-
     </SafeAreaView>
   );
 }
@@ -48,42 +27,42 @@ const styles = StyleSheet.create({
   container: {
     flex: 1, // Neemt het hele scherm in beslag
     backgroundColor: COLORS.background,
-    justifyContent: 'space-between', // Verdeelt de 3 elementen netjes over de hoogte
-    alignItems: 'center',
+    justifyContent: "space-between", // Verdeelt de 3 elementen netjes over de hoogte
+    alignItems: "center",
     paddingVertical: 40,
     paddingHorizontal: 20,
   },
   headerContainer: {
-    alignItems: 'center',
+    alignItems: "center",
     marginTop: 20,
   },
   title: {
     fontSize: 48,
-    fontFamily: 'Baloo-Bold', // Jouw custom font
+    fontFamily: "Baloo-Bold", // Jouw custom font
     color: COLORS.primaryOrange, // Jouw gefixte oranje kleur
     marginBottom: 10,
   },
-  tagline: {
-    fontSize: 18,
-    fontFamily: 'Inter',
-    textAlign: 'center',
+  sectionLabel: {
+    fontSize: 16,
+    fontFamily: "Inter",
+    fontWeight: "600", // Maakt de tekst net wat dikker (semi-bold)
+    textAlign: "center",
     color: COLORS.textDark,
-    paddingHorizontal: 20,
-    lineHeight: 24,
-    marginTop: 20,
+    marginTop: 24, // Iets meer ademruimte aan de bovenkant
+    marginBottom: 12, // Dichter op de knop eronder, zodat ze visueel een groepje vormen
   },
   imageContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: '100%',
+    justifyContent: "center",
+    alignItems: "center",
+    width: "100%",
   },
   mascotImage: {
     width: 250,
     height: 250,
   },
   buttonContainer: {
-    width: '90%',
-    paddingBottom: 20,
+    width: "90%",
+    paddingBottom: 220,
   },
 });

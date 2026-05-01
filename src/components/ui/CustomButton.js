@@ -27,6 +27,7 @@ const styles = StyleSheet.create({
     borderRadius: 24, // Jouw mooie ronde hoeken
     alignItems: 'center',
     marginBottom: 15,
+    marginTop: 15,
     width: '100%',
   },
   primaryBg: {
