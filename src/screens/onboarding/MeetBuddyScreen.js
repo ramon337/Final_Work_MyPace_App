@@ -4,21 +4,24 @@ import { StyleSheet, Text, View, Image, SafeAreaView, TouchableOpacity } from "r
 import { COLORS } from "../../theme/colors";
 import CustomButton from "../../components/ui/CustomButton";
 import { Ionicons } from "@expo/vector-icons";
+import ProgressBar from "../../components/ui/ProgressBar";
 
 export default function MeetBuddyScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.container}>
       {/* Terugknop (Absolute gepositioneerd linksboven) */}
-      
 
       {/* Top sectie */}
+
+      <View style={styles.topBar}>
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+          <Ionicons name="arrow-back" size={28} color={COLORS.textDark} />
+        </TouchableOpacity>
+
+        {/* ProgressBar neemt door flex: 1 automatisch de rest van de ruimte in */}
+        <ProgressBar currentStep={4} totalSteps={4} />
+      </View>
       <View style={styles.headerContainer}>
-        <TouchableOpacity
-        style={styles.backButton}
-        onPress={() => navigation.goBack()} // Dit commando brengt je altijd naar het vorige scherm
-      >
-        <Ionicons name="arrow-back" size={28} color={COLORS.textDark} />
-      </TouchableOpacity>
         <Text style={styles.title}>Meet your new running partner!</Text>
         <Text style={styles.body}>Your Buddy is here to cheer you on, celebrate your consistency, and keep things fun. No judgment, no speed limits, just good vibes.</Text>
       </View>
@@ -44,19 +47,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: 40,
   },
-  headerContainer: {
-    alignItems: "center",
-    width: "90%",
-  },
-  title: {
-    fontSize: 32, // Iets kleiner dan 'MyPace' op het vorige scherm
-    fontFamily: "Baloo-Bold",
-    color: COLORS.primaryOrange,
-    textAlign: "center",
-    marginBottom: 15,
-    marginTop: 80,
-    lineHeight: 40,
-  },
+
   body: {
     fontSize: 16,
     fontFamily: "Inter",
@@ -77,11 +68,33 @@ const styles = StyleSheet.create({
   buttonContainer: {
     width: "90%",
   },
-  backButton: {
+
+  progressBar: {
     position: "absolute",
-    top: 20,
-    left: 0,
-    zIndex: 10, // Zorgt dat de knop áltijd bovenop ligt en klikbaar is
-    padding: 10, // Maakt het klikbare gebied voor je vinger wat groter
+  },
+  topBar: {
+    flexDirection: 'row', // Dit zet de knop en balk strak naast elkaar
+    alignItems: 'center', // Dit centreert ze verticaal ten opzichte van elkaar
+    width: '90%',
+    marginTop: 10,
+  },
+  headerContainer: {
+    alignItems: "center",
+    width: "90%",
+    marginTop: 30, // Geeft wat ruimte tussen de topbar en de titel
+  },
+  title: {
+    fontSize: 32, 
+    fontFamily: "Baloo-Bold",
+    color: COLORS.primaryOrange,
+    textAlign: "center",
+    marginBottom: 15,
+    // marginTop: 80, <--- DEZE REGEL MAG JE VERWIJDEREN!
+    lineHeight: 40,
+  },
+  backButton: {
+    padding: 10, 
+    marginLeft: -10, // Trekt de knop iets naar links zodat hij optisch lijnt met je tekst
+    // LET OP: alle absolute, top, left en zIndex regels zijn hier verwijderd!
   },
 });
