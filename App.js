@@ -7,6 +7,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 // Importeer je schermen
 import WelcomeScreen from './src/screens/onboarding/WelcomeScreen';
 import MeetBuddyScreen from './src/screens/onboarding/MeetBuddyScreen';
+import AccountSetupScreen from './src/screens/onboarding/AccountSetupScreen';
 import { COLORS } from './src/theme/colors';
 
 // Maak de Navigator aan
@@ -33,6 +34,7 @@ export default function App() {
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Welcome" component={WelcomeScreen} />
         <Stack.Screen name="MeetBuddy" component={MeetBuddyScreen} />
+        <Stack.Screen name="AccountSetup" component={AccountSetupScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

@@ -50,14 +50,14 @@ const styles = StyleSheet.create({
   },
   track: {
     height: 24, // Dikte van de hele balk
-    backgroundColor: '#E0E0E0', // Lichtgrijs
+    backgroundColor: COLORS.grey, // Lichtgrijs
     borderRadius: 12, // Mooi rond
     overflow: 'hidden', // Zorgt dat de oranje balk netjes binnen de ronde hoeken blijft
     position: 'relative',
   },
   fill: {
     height: '100%',
-    backgroundColor: COLORS.primaryOrange,
+    backgroundColor: COLORS.progressGreen,
     borderRadius: 12,
   },
   textContainer: {

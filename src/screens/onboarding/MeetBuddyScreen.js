@@ -17,9 +17,6 @@ export default function MeetBuddyScreen({ navigation }) {
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={28} color={COLORS.textDark} />
         </TouchableOpacity>
-
-        {/* ProgressBar neemt door flex: 1 automatisch de rest van de ruimte in */}
-        <ProgressBar currentStep={4} totalSteps={4} />
       </View>
       <View style={styles.headerContainer}>
         <Text style={styles.title}>Meet your new running partner!</Text>
@@ -33,7 +30,7 @@ export default function MeetBuddyScreen({ navigation }) {
 
       {/* Onderste sectie */}
       <View style={styles.buttonContainer}>
-        <CustomButton title="Continue" type="primary" onPress={() => console.log("Naar volgende scherm!")} />
+        <CustomButton title="Continue" type="primary" onPress={() => navigation.navigate("AccountSetup")} />
       </View>
     </SafeAreaView>
   );
@@ -67,10 +64,6 @@ const styles = StyleSheet.create({
   },
   buttonContainer: {
     width: "90%",
-  },
-
-  progressBar: {
-    position: "absolute",
   },
   topBar: {
     flexDirection: 'row', // Dit zet de knop en balk strak naast elkaar

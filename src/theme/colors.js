@@ -5,4 +5,5 @@ export const COLORS = {
   progressGreen: '#519378',
   textDark: '#181C2F',
   white: '#FFFFFF',
+  grey: '#E0E0E0',
 };
