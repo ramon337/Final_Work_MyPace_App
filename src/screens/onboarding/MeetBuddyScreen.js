@@ -15,7 +15,7 @@ export default function MeetBuddyScreen({ navigation }) {
 
       <View style={styles.topBar}>
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={28} color={COLORS.textDark} />
+          <Ionicons name="arrow-back" size={28} color={COLORS.textLight} />
         </TouchableOpacity>
       </View>
       <View style={styles.headerContainer}>
@@ -49,7 +49,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: "Inter",
     textAlign: "center",
-    color: COLORS.textDark,
+    color: COLORS.textLight,
     lineHeight: 24,
   },
   imageContainer: {

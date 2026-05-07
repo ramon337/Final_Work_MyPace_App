@@ -36,16 +36,16 @@ const styles = StyleSheet.create({
   secondaryBg: {
     backgroundColor: 'transparent',
     borderWidth: 2,
-    borderColor: COLORS.textDark,
+    borderColor: COLORS.textLight,
   },
   text: {
     fontSize: 18,
     fontFamily: 'Inter', // Jouw nieuwe lettertype! (gebruik 'Inter-Bold' als je die variant hebt)
   },
   primaryText: {
-    color: COLORS.white,
+    color: COLORS.textLight,
   },
   secondaryText: {
-    color: COLORS.textDark,
+    color: COLORS.textLight,
   },
 });

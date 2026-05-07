@@ -11,7 +11,7 @@ export default function AccountSetupScreen({ navigation }) {
   const [currentStep, setCurrentStep] = useState(1);
   const [selectedGoal, setSelectedGoal] = useState(null); // Voor stap 3
   const [selectedCrewAction, setSelectedCrewAction] = useState(null); // Voor stap 4
-  
+
   const totalSteps = 5; // Verhoogd naar 5 stappen!
 
   // --- LOGICA ---
@@ -27,54 +27,44 @@ export default function AccountSetupScreen({ navigation }) {
     if (currentStep < totalSteps) {
       setCurrentStep(currentStep + 1);
     } else {
-      console.log("Setup Compleet! Navigeren naar Home...");
-      // navigation.navigate('Home'); 
+      console.log("Setup Compleet! Navigeren naar Welcome...");
+      navigation.navigate('MainTabs');
     }
   };
 
-const handleSkip = () => {
+  const handleSkip = () => {
     // Wis de selectie van de huidige stap voordat we verder gaan
     if (currentStep === 3) {
       setSelectedGoal(null);
     } else if (currentStep === 4) {
       setSelectedCrewAction(null);
     }
-    
+
     // Ga nu pas naar de volgende stap
     setCurrentStep(currentStep + 1);
   };
 
   // --- DYNAMISCHE ONDERKANT (Knoppen) ---
   const renderFooterButtons = () => {
-    // Voor stap 3 en 4 hebben we de slimme Continue / Skip logica
-    if (currentStep === 3 || currentStep === 4) {
-      // We bepalen even welke 'state' we moeten checken afhankelijk van de stap
-      const hasSelection = currentStep === 3 ? selectedGoal !== null : selectedCrewAction !== null;
+    // 1. We bepalen eerst even slim wanneer de Continue knop wél zichtbaar is
+    const showContinue = currentStep === 1 || currentStep === 2 || currentStep === 5 || (currentStep === 3 && selectedGoal !== null) || (currentStep === 4 && selectedCrewAction !== null);
 
-      return (
-        <View style={{ width: '100%', alignItems: 'center' }}>
-          {/* Als er iets geselecteerd is, tonen we de Continue knop */}
-          {hasSelection && (
-            <View style={{ width: '100%', marginBottom: 15 }}>
-              <CustomButton title="Continue" type="primary" onPress={handleNext} />
-            </View>
-          )}
-          
-          {/* De Skip knop blijft ALTIJD staan */}
-          <TouchableOpacity onPress={handleSkip} style={styles.skipButton}>
-            <Text style={styles.skipText}>Skip for now</Text>
-          </TouchableOpacity>
-        </View>
-      );
-    }
-
-    // Voor stap 1, 2 en 5 gebruiken we gewoon de Continue/Finish knop (geen skip)
     return (
-      <CustomButton 
-        title={currentStep === totalSteps ? "Finish Setup" : "Continue"} 
-        type="primary" 
-        onPress={handleNext} 
-      />
+      <View style={styles.footerWrapper}>
+        {/* Vaste plek 1: De Primary Button (Continue) */}
+        {/* Dit blokje is áltijd even hoog, of de knop er nu is of niet. 
+            Hierdoor verspringt er nooit iets! */}
+        <View style={styles.primaryButtonSlot}>{showContinue && <CustomButton title={currentStep === totalSteps ? "Finish Setup" : "Continue"} type="primary" onPress={handleNext} />}</View>
+
+        {/* Vaste plek 2: De Skip Button (Onder de Continue knop) */}
+        <View style={styles.skipButtonSlot}>
+          {(currentStep === 3 || currentStep === 4) && (
+            <TouchableOpacity onPress={handleSkip} style={styles.skipButton}>
+              <Text style={styles.skipText}>Skip for now</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
     );
   };
 
@@ -114,15 +104,12 @@ const handleSkip = () => {
           <View style={styles.content}>
             <Text style={styles.stepTitle}>Set your weekly goal</Text>
             <Text style={styles.bodyText}>Consistency is key! How many runs do you want to aim for each week?</Text>
-            
+
             <View style={styles.optionsRow}>
               {[1, 2, 3].map((num) => (
-                <TouchableOpacity 
+                <TouchableOpacity
                   key={num}
-                  style={[
-                    styles.goalBox, 
-                    selectedGoal === num && styles.boxSelected 
-                  ]}
+                  style={[styles.goalBox, selectedGoal === num && styles.boxSelected]}
                   // DEZE REGEL IS AANGEPAST:
                   onPress={() => setSelectedGoal(selectedGoal === num ? null : num)}
                   activeOpacity={0.7}
@@ -138,29 +125,20 @@ const handleSkip = () => {
           <View style={styles.content}>
             <Text style={styles.stepTitle}>Stronger Together!</Text>
             <Text style={styles.bodyText}>Running is more fun with friends. What's your plan?</Text>
-            
+
             {/* Optie 1: Invite */}
-            <TouchableOpacity 
-              style={[styles.crewCard, selectedCrewAction === 'invite' && styles.boxSelected]}
-              onPress={() => setSelectedCrewAction(selectedCrewAction === 'invite' ? null : 'invite')}
-            >
-              <Text style={[styles.crewCardText, selectedCrewAction === 'invite' && styles.textSelected]}>I have an invite code</Text>
+            <TouchableOpacity style={[styles.crewCard, selectedCrewAction === "invite" && styles.boxSelected]} onPress={() => setSelectedCrewAction(selectedCrewAction === "invite" ? null : "invite")}>
+              <Text style={[styles.crewCardText, selectedCrewAction === "invite" && styles.textSelected]}>I have an invite code</Text>
             </TouchableOpacity>
 
             {/* Optie 2: Zoeken */}
-            <TouchableOpacity 
-              style={[styles.crewCard, selectedCrewAction === 'find' && styles.boxSelected]}
-              onPress={() => setSelectedCrewAction(selectedCrewAction === 'find' ? null : 'find')}
-            >
-              <Text style={[styles.crewCardText, selectedCrewAction === 'find' && styles.textSelected]}>I'm looking for a group</Text>
+            <TouchableOpacity style={[styles.crewCard, selectedCrewAction === "find" && styles.boxSelected]} onPress={() => setSelectedCrewAction(selectedCrewAction === "find" ? null : "find")}>
+              <Text style={[styles.crewCardText, selectedCrewAction === "find" && styles.textSelected]}>I'm looking for a group</Text>
             </TouchableOpacity>
 
             {/* Optie 3: Zelf maken */}
-            <TouchableOpacity 
-              style={[styles.crewCard, selectedCrewAction === 'create' && styles.boxSelected]}
-              onPress={() => setSelectedCrewAction(selectedCrewAction === 'create' ? null : 'create')}
-            >
-              <Text style={[styles.crewCardText, selectedCrewAction === 'create' && styles.textSelected]}>I want to create my own Crew</Text>
+            <TouchableOpacity style={[styles.crewCard, selectedCrewAction === "create" && styles.boxSelected]} onPress={() => setSelectedCrewAction(selectedCrewAction === "create" ? null : "create")}>
+              <Text style={[styles.crewCardText, selectedCrewAction === "create" && styles.textSelected]}>I want to create my own Crew</Text>
             </TouchableOpacity>
           </View>
         );
@@ -168,15 +146,15 @@ const handleSkip = () => {
         // Deze stap past zich aan op basis van wat je in stap 4 koos!
         return (
           <View style={styles.content}>
-            {selectedCrewAction === 'invite' && (
+            {selectedCrewAction === "invite" && (
               <>
                 <Text style={styles.stepTitle}>Enter your code</Text>
                 <Text style={styles.bodyText}>Paste the invite code you received from your friend below.</Text>
                 <TextInput style={styles.input} placeholder="e.g. MYPACE-1234" placeholderTextColor="#999999" autoCapitalize="characters" />
               </>
             )}
-            
-            {selectedCrewAction === 'find' && (
+
+            {selectedCrewAction === "find" && (
               <>
                 <Text style={styles.stepTitle}>Find a Crew</Text>
                 <Text style={styles.bodyText}>Search for local running groups in your area.</Text>
@@ -184,7 +162,7 @@ const handleSkip = () => {
               </>
             )}
 
-            {selectedCrewAction === 'create' && (
+            {selectedCrewAction === "create" && (
               <>
                 <Text style={styles.stepTitle}>Name your Crew</Text>
                 <Text style={styles.bodyText}>Give your new running group an awesome name.</Text>
@@ -210,16 +188,14 @@ const handleSkip = () => {
     <SafeAreaView style={styles.container}>
       <View style={styles.topBar}>
         <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-          <Ionicons name="arrow-back" size={28} color={COLORS.textDark} />
+          <Ionicons name="arrow-back" size={28} color={COLORS.textLight} />
         </TouchableOpacity>
         <ProgressBar currentStep={currentStep} totalSteps={totalSteps} />
       </View>
 
       <View style={styles.dynamicContainer}>{renderStepContent()}</View>
 
-      <View style={styles.buttonContainer}>
-        {renderFooterButtons()}
-      </View>
+      <View style={styles.buttonContainer}>{renderFooterButtons()}</View>
     </SafeAreaView>
   );
 }
@@ -232,68 +208,81 @@ const styles = StyleSheet.create({
   dynamicContainer: { flex: 1, width: "90%" },
   content: { width: "100%" },
   stepTitle: { fontSize: 28, fontFamily: "Baloo-Bold", color: COLORS.primaryOrange, marginBottom: 10 },
-  bodyText: { fontSize: 16, fontFamily: "Inter", color: COLORS.textDark, lineHeight: 24, marginBottom: 20 },
-  sectionLabel: { fontSize: 16, fontFamily: "Inter", fontWeight: "600", color: COLORS.textDark, marginTop: 15, marginBottom: 8 },
-  input: { paddingVertical: 18, paddingHorizontal: 20, borderRadius: 24, marginBottom: 15, width: "100%", backgroundColor: COLORS.grey, color: COLORS.textDark, fontFamily: "Inter", fontSize: 16 },
-  buttonContainer: { width: "90%", paddingBottom: 20, alignItems: "center" }, // alignItems center toegevoegd voor de skip knop
+  bodyText: { fontSize: 16, fontFamily: "Inter", color: COLORS.textLight, lineHeight: 24, marginBottom: 20 },
+  sectionLabel: { fontSize: 16, fontFamily: "Inter", fontWeight: "600", color: COLORS.textLight, marginTop: 15, marginBottom: 8 },
+  input: { paddingVertical: 18, paddingHorizontal: 20, borderRadius: 24, marginBottom: 15, width: "100%", backgroundColor: COLORS.textLight, color: COLORS.textDark, fontFamily: "Inter", fontSize: 16 },
+  buttonContainer: { width: "90%", paddingBottom: 0, alignItems: "center" }, // alignItems center toegevoegd voor de skip knop
   avatarContainer: { alignItems: "center", marginTop: 40 },
-  avatarPlaceholder: { width: 140, height: 140, borderRadius: 70, backgroundColor: COLORS.grey, justifyContent: "center", alignItems: "center", position: "relative" },
+  avatarPlaceholder: { width: 140, height: 140, borderRadius: 70, backgroundColor: COLORS.textLight, justifyContent: "center", alignItems: "center", position: "relative" },
   plusBadge: { position: "absolute", bottom: 5, right: 5, backgroundColor: COLORS.primaryOrange, width: 36, height: 36, borderRadius: 18, justifyContent: "center", alignItems: "center", borderWidth: 3, borderColor: COLORS.background },
   uploadText: { marginTop: 16, fontFamily: "Inter", fontSize: 16, fontWeight: "600", color: COLORS.primaryOrange },
-  
+
   // --- NIEUWE STIJLEN VOOR STAP 3, 4 EN DE SKIP KNOP ---
   optionsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    width: "100%",
     marginTop: 10,
   },
   goalBox: {
-    width: '30%', // Neemt net geen derde van de breedte in
+    width: "30%", // Neemt net geen derde van de breedte in
     aspectRatio: 1, // Maakt er perfecte vierkantjes van
-    backgroundColor: COLORS.grey,
+    backgroundColor: COLORS.cardBackground,
     borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     borderWidth: 2,
-    borderColor: 'transparent', // Onzichtbare rand, voorkomt dat hij "springt" bij selectie
+    borderColor: "transparent", // Onzichtbare rand, voorkomt dat hij "springt" bij selectie
   },
   goalNumber: {
     fontSize: 32,
-    fontFamily: 'Baloo-Bold',
-    color: COLORS.textDark,
+    fontFamily: "Baloo-Bold",
+    color: COLORS.textLight,
   },
   crewCard: {
-    width: '100%',
-    backgroundColor: COLORS.grey,
+    width: "100%",
+    backgroundColor: COLORS.cardBackground,
     paddingVertical: 20,
     paddingHorizontal: 20,
     borderRadius: 20,
     marginBottom: 15,
     borderWidth: 2,
-    borderColor: 'transparent',
+    borderColor: "transparent",
   },
   crewCardText: {
     fontSize: 16,
-    fontFamily: 'Inter',
-    fontWeight: '600',
-    color: COLORS.textDark,
+    fontFamily: "Inter",
+    fontWeight: "600",
+    color: COLORS.textLight,
   },
   boxSelected: {
-    borderColor: COLORS.secondaryYellow || '#FFC107', // Jouw gele kleur
-    backgroundColor: '#FFFBEA', // Optioneel: een heel licht geel tintje op de achtergrond voor extra feedback
+    borderColor: COLORS.secondaryYellow,
+    backgroundColor: COLORS.selected,
   },
-  textSelected: {
-    color: COLORS.secondaryYellow || '#FFC107', // Laat ook de tekst geel kleuren!
+
+  footerWrapper: {
+    width: '100%',
+    alignItems: 'center',
+  },
+  primaryButtonSlot: {
+    width: '100%',
+    minHeight: 60, // De gemiddelde hoogte van een knop. Voorkomt dat het scherm inzakt als de knop weg is!
+    justifyContent: 'center',
+  },
+  skipButtonSlot: {
+    height: 40, // De ruimte die we reserveren voor de skip knop
+    justifyContent: 'center',
+    marginTop: 10, // Een beetje marge tussen Continue en Skip
   },
   skipButton: {
-    paddingVertical: 15,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
   },
   skipText: {
     fontSize: 16,
-    fontFamily: 'Inter',
-    fontWeight: '600',
-    color: '#999999', // Grijze kleur
-    textDecorationLine: 'underline', // Onderstreept!
-  }
+    fontFamily: "Inter",
+    fontWeight: "600",
+    color: COLORS.secondaryYellow,
+    textDecorationLine: "underline", // Onderstreept!
+  },
 });

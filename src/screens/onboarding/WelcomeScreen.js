@@ -47,7 +47,7 @@ const styles = StyleSheet.create({
     fontFamily: "Inter",
     fontWeight: "600", // Maakt de tekst net wat dikker (semi-bold)
     textAlign: "center",
-    color: COLORS.textDark,
+    color: COLORS.textLight,
     marginTop: 24, // Iets meer ademruimte aan de bovenkant
     marginBottom: 12, // Dichter op de knop eronder, zodat ze visueel een groepje vormen
   },

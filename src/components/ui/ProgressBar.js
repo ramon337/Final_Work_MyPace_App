@@ -50,14 +50,14 @@ const styles = StyleSheet.create({
   },
   track: {
     height: 24, // Dikte van de hele balk
-    backgroundColor: COLORS.grey, // Lichtgrijs
+    backgroundColor: COLORS.cardBackground,
     borderRadius: 12, // Mooi rond
     overflow: 'hidden', // Zorgt dat de oranje balk netjes binnen de ronde hoeken blijft
     position: 'relative',
   },
   fill: {
     height: '100%',
-    backgroundColor: COLORS.progressGreen,
+    backgroundColor: COLORS.success,
     borderRadius: 12,
   },
   textContainer: {
@@ -69,7 +69,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter',
     fontWeight: 'bold',
     fontSize: 12,
-    color: COLORS.textDark, // Zwart leest het beste over oranje én grijs!
+    color: COLORS.textLight, // Zwart leest het beste over oranje én grijs!
     textTransform: 'uppercase', // Maakt er "STEP 1/4" van, ziet er strak uit
   },
 });
