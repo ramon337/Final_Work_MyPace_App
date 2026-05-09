@@ -3,8 +3,10 @@ import { View, ActivityIndicator } from 'react-native';
 import { useFonts } from 'expo-font';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'; // <-- Toegevoegd!
-import { Ionicons } from '@expo/vector-icons'; // <-- Toegevoegd voor de icoontjes!
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import CrewIcon from './src/components/icons/CrewIcon';
+import QuestIcon from './src/components/icons/QuestIcon';
+import ProfileIcon from './src/components/icons/ProfileIcon';
 
 // Importeer je schermen
 import WelcomeScreen from './src/screens/onboarding/WelcomeScreen';
@@ -25,18 +27,7 @@ function MainTabs() {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
-        // Stijl voor de titelbalk bovenin de dashboard schermen
-        headerStyle: {
-          backgroundColor: COLORS.background, 
-          elevation: 0, // Haalt schaduw weg op Android
-          shadowOpacity: 0, // Haalt schaduw weg op iOS
-          borderBottomWidth: 0, // Zorgt voor een naadloze overgang
-        },
-        headerTitleStyle: {
-          fontFamily: 'Baloo-Bold',
-          color: COLORS.textLight || '#FFFFFF', 
-          fontSize: 28,
-        },
+        headerShown: false,
         // Stijl voor de navigatiebalk onderaan
         tabBarStyle: {
           backgroundColor: COLORS.cardBackground, 
@@ -48,17 +39,20 @@ function MainTabs() {
         tabBarActiveTintColor: COLORS.primaryOrange,
         tabBarInactiveTintColor: '#999999',
         tabBarIcon: ({ focused, color, size }) => {
-          let iconName;
-
+          // In plaats van Ionicons, returnen we nu JOUW componenten!
+          // We geven de 'color' (oranje of grijs) en 'size' mooi door.
+          
           if (route.name === 'Crew') {
-            iconName = focused ? 'people' : 'people-outline';
+            // Misschien heb je een aparte SVG voor focused (solid) vs unfocused (outline)?
+            // Zo ja, dan kun je hier if(focused) { return <CrewIconSolid /> } doen.
+            return <CrewIcon color={color} size={size} />;
+            
           } else if (route.name === 'Quests') {
-            iconName = focused ? 'trophy' : 'trophy-outline';
+            return <QuestIcon color={color} size={size} />;
+            
           } else if (route.name === 'You') {
-            iconName = focused ? 'person' : 'person-outline';
+            return <ProfileIcon color={color} size={size} />;
           }
-
-          return <Ionicons name={iconName} size={28} color={color} />;
         },
       })}
     >

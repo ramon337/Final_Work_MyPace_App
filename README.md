@@ -48,3 +48,8 @@ Join our community of developers creating universal apps.
 
 - [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
 - [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+
+## useful sources
+[getting to know react native](https://reactnative.dev/docs/tutorial)
+[getting to know expo](https://youtu.be/0-S5a0eXPoc?si=VgUcWfueLcwiSFUA)
+https://react-svgr.com/playground/?native=true: om svg naar native te zetten
