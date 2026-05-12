@@ -19,7 +19,7 @@ export default function StravaSyncScreen({ navigation, route }) {
   };
 
   return (
-    <react-native style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={28} color={COLORS.textLight} />
@@ -98,7 +98,7 @@ export default function StravaSyncScreen({ navigation, route }) {
           </TouchableOpacity>
         </View>
       ) : null}
-    </react-native>
+    </SafeAreaView>
   );
 }
 

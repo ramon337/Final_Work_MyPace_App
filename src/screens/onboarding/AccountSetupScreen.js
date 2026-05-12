@@ -6,12 +6,18 @@ import { COLORS } from "../../theme/colors";
 import CustomButton from "../../components/ui/CustomButton";
 import ProgressBar from "../../components/ui/ProgressBar";
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { supabase } from '../../lib/supabase';
 
 export default function AccountSetupScreen({ navigation }) {
   // --- STATE ---
   const [currentStep, setCurrentStep] = useState(1);
   const [selectedGoal, setSelectedGoal] = useState(null); // Voor stap 3
   const [selectedCrewAction, setSelectedCrewAction] = useState(null); // Voor stap 4
+
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [stepOneError, setStepOneError] = useState("");v
 
   const totalSteps = 5; // Verhoogd naar 5 stappen!
 
@@ -24,12 +30,43 @@ export default function AccountSetupScreen({ navigation }) {
     }
   };
 
-  const handleNext = () => {
+const handleNext = async () => {
+    // POORTWACHTER VOOR STAP 1
+    if (currentStep === 1) {
+      if (!name || !email || !password) {
+        setStepOneError("Please fill in all fields.");
+        return; // Stop de functie, ga niet naar stap 2!
+      }
+      
+      // Simpele check of het op een e-mailadres lijkt (bevat een @ en een punt)
+      const emailRegex = /\S+@\S+\.\S+/;
+      if (!emailRegex.test(email)) {
+        setStepOneError("Please enter a valid email address.");
+        return;
+      }
+      
+      // Supabase eist minimaal 6 tekens
+      if (password.length < 6) {
+        setStepOneError("Password must be at least 6 characters long.");
+        return;
+      }
+      
+      // Als alles goed is, haal de error weg voor de zekerheid
+      setStepOneError("");
+    }
+
+    // DE NORMALE NAVIGATIE LOGICA
     if (currentStep < totalSteps) {
       setCurrentStep(currentStep + 1);
     } else {
-      console.log("Setup Compleet! Navigeren naar Welcome...");
-      navigation.navigate('MainTabs');
+      console.log("Setup Compleet! Account opslaan in database...");
+      const success = await handleSignUp();
+      
+      if (success) {
+        navigation.navigate('MainTabs');
+      } else {
+        console.log("Er ging iets mis bij Supabase, we blijven op dit scherm.");
+      }
     }
   };
 
@@ -43,6 +80,37 @@ export default function AccountSetupScreen({ navigation }) {
 
     // Ga nu pas naar de volgende stap
     setCurrentStep(currentStep + 1);
+  };
+
+  const handleSignUp = async () => {
+    console.log("Bezig met account aanmaken voor:", email);
+    
+    // Gebruik nu de echte email en password van de gebruiker
+    const { data, error } = await supabase.auth.signUp({
+      email: email, 
+      password: password, 
+    });
+
+    if (error) {
+      console.error("Fout bij registreren:", error.message);
+      return false; // Geef door dat het mislukt is
+    }
+
+    if (data.user) {
+      // Maak direct het openbare profiel aan met de echte naam
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .insert([
+          { id: data.user.id, display_name: name }
+        ]);
+        
+      if (profileError) {
+        console.error("Fout bij profiel maken:", profileError.message);
+      } else {
+        console.log("Profiel succesvol gekoppeld!");
+      }
+      return true; // Geef door dat het gelukt is
+    }
   };
 
   // --- DYNAMISCHE ONDERKANT (Knoppen) ---
@@ -76,12 +144,23 @@ export default function AccountSetupScreen({ navigation }) {
         return (
           <View style={styles.content}>
             <Text style={styles.stepTitle}>Registration</Text>
+            
+            {/* NIEUW: Toon de error alleen als er eentje is */}
+            {stepOneError !== "" && (
+              <View style={styles.errorBox}>
+                <Ionicons name="warning-outline" size={20} color="#FF6B6B" />
+                <Text style={styles.errorText}>{stepOneError}</Text>
+              </View>
+            )}
+
             <Text style={styles.sectionLabel}>What's your name?</Text>
-            <TextInput style={styles.input} placeholder="Enter your name" placeholderTextColor="#999999" />
+            <TextInput style={styles.input} placeholder="Enter your name" placeholderTextColor="#999999" value={name} onChangeText={setName} />
+            
             <Text style={styles.sectionLabel}>What's your email?</Text>
-            <TextInput style={styles.input} placeholder="Enter your email" placeholderTextColor="#999999" keyboardType="email-address" autoCapitalize="none" />
+            <TextInput style={styles.input} placeholder="Enter your email" placeholderTextColor="#999999" keyboardType="email-address" autoCapitalize="none" value={email} onChangeText={setEmail} />
+            
             <Text style={styles.sectionLabel}>Choose your password</Text>
-            <TextInput style={styles.input} placeholder="Enter your password" placeholderTextColor="#999999" secureTextEntry={true} />
+            <TextInput style={styles.input} placeholder="Enter your password" placeholderTextColor="#999999" secureTextEntry={true} value={password} onChangeText={setPassword} />
           </View>
         );
       case 2:
@@ -186,7 +265,7 @@ export default function AccountSetupScreen({ navigation }) {
   };
 
   return (
-    <react-native style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <View style={styles.topBar}>
         <TouchableOpacity style={styles.backButton} onPress={handleBack}>
           <Ionicons name="arrow-back" size={28} color={COLORS.textLight} />
@@ -197,7 +276,7 @@ export default function AccountSetupScreen({ navigation }) {
       <View style={styles.dynamicContainer}>{renderStepContent()}</View>
 
       <View style={styles.buttonContainer}>{renderFooterButtons()}</View>
-    </react-native>
+    </SafeAreaView>
   );
 }
 
@@ -285,5 +364,21 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: COLORS.secondaryYellow,
     textDecorationLine: "underline", // Onderstreept!
+  },
+  errorBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 107, 107, 0.1)',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#FF6B6B',
+    marginBottom: 15,
+  },
+  errorText: {
+    color: '#FF6B6B',
+    fontFamily: 'Inter',
+    marginLeft: 8,
+    fontSize: 14,
   },
 });
