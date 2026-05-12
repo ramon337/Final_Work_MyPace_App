@@ -1,10 +1,122 @@
 // src/screens/main/CrewScreen.js
-import React from 'react';
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../theme/colors';
+import * as WebBrowser from 'expo-web-browser';
+import { useAuthRequest, makeRedirectUri, exchangeCodeAsync } from 'expo-auth-session';
+import { useEffect, React } from 'react';
+
+WebBrowser.maybeCompleteAuthSession();
+
+const stravaEndpoints = {
+  authorizationEndpoint: 'https://www.strava.com/oauth/mobile/authorize',
+  tokenEndpoint: 'https://www.strava.com/oauth/token',
+};
 
 export default function CrewScreen() {
+  const clientId = '239284'; 
+  const clientSecret = '60200fc0f94bb76d5459359f3dbda3eb2b923b0d';
+
+const redirectUri = makeRedirectUri();
+
+  const [request, response, promptAsync] = useAuthRequest(
+    {
+      clientId: clientId,
+      scopes: ['activity:read_all'],
+      usePKCE: false,
+      redirectUri: redirectUri,
+    },
+    stravaEndpoints
+  );
+
+  // We loggen de URI zodat we hem aan Strava kunnen geven
+  console.log("🚨 MIJN REDIRECT URI IS:", redirectUri);
+
+  // Zodra de gebruiker terugkomt van Strava, wordt deze code wakker:
+  useEffect(() => {
+    if (response?.type === 'success') {
+      const { code } = response.params;
+      console.log("Stap 1 gelukt! Tijdelijke code ontvangen:", code);
+      
+      // Nu ruilen we de code in voor de échte Access Token
+      fetchToken(code);
+    } else if (response?.type === 'error') {
+      console.log("Inloggen mislukt of geannuleerd.", response.error);
+    }
+  }, [response]);
+
+  const fetchToken = async (code) => {
+    try {
+      // We doen de inruil handmatig met een POST request naar Strava
+      const response = await fetch('https://www.strava.com/oauth/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          client_id: clientId,
+          client_secret: clientSecret,
+          code: code,
+          grant_type: 'authorization_code',
+        }),
+      });
+
+      const data = await response.json();
+      
+      // Strava stuurt de token terug als 'access_token'
+      if (data.access_token) {
+        console.log("🎉 BINGO! We hebben de Access Token:", data.access_token);
+        
+        // Nu we de échte token hebben, halen we de runs op
+        fetchStravaActivities(data.access_token);
+      } else {
+        console.log("Strava gaf geen token terug. Response:", data);
+      }
+      
+    } catch (error) {
+      console.error("Fout bij ophalen van token:", error);
+    }
+  };
+
+ const fetchStravaActivities = async (accessToken) => {
+    try {
+      console.log("We gaan de Strava filter aanzetten...");
+      
+      // 1. Bereken het tijdstip van exact 3 dagen geleden in 'Epoch' seconden
+      const threeDaysAgoSeconds = Math.floor(Date.now() / 1000) - (3 * 24 * 60 * 60);
+
+      // We voegen '?after=...' toe aan de URL. We zetten per_page even op 30 voor de zekerheid.
+      const response = await fetch(`https://www.strava.com/api/v3/athlete/activities?after=${threeDaysAgoSeconds}&per_page=30`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      const allActivities = await response.json();
+      
+      // 2. Filter op type: We staan alleen deze specifieke hardloop-types toe
+      const allowedTypes = ['Run', 'TrailRun', 'VirtualRun'];
+      
+      const filteredRuns = allActivities.filter(activity => 
+        allowedTypes.includes(activity.type)
+      );
+      
+      console.log(`BINGO! We vonden ${filteredRuns.length} geldige hardloopsessies van de afgelopen 3 dagen:`);
+      
+      filteredRuns.forEach((run, index) => {
+        const afstandKm = (run.distance / 1000).toFixed(2);
+        const tijdMinuten = Math.round(run.moving_time / 60);
+        console.log(`${index + 1}: ${run.name} - ${tijdMinuten} minuten (${run.type})`);
+      });
+
+      // Hierna kunnen we deze filteredRuns opslaan en toevoegen aan de Quest!
+
+    } catch (error) {
+      console.error("Fout bij ophalen van runs:", error);
+    }
+  };
+  
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
       
@@ -56,7 +168,16 @@ export default function CrewScreen() {
       </TouchableOpacity>
 
       {/* STRAVA SYNC BUTTON */}
-      <TouchableOpacity style={styles.stravaButton} activeOpacity={0.8}>
+      <TouchableOpacity 
+        style={[styles.stravaButton, !request ? { opacity: 0.5 } : {}]} 
+        activeOpacity={0.8}
+        disabled={!request} // Knop is uitgeschakeld tot Strava klaar is met laden
+        onPress={() => {
+          console.log("Strava inlogscherm openen...");
+          promptAsync();
+        }}
+      >
+        <Ionicons name="fitness" size={24} color="#FFF" style={{ marginRight: 10 }} />
         <Text style={styles.stravaButtonText}>Sync run from Strava</Text>
       </TouchableOpacity>
 
@@ -100,6 +221,7 @@ export default function CrewScreen() {
     </ScrollView>
   );
 }
+
 
 const styles = StyleSheet.create({
   container: {
