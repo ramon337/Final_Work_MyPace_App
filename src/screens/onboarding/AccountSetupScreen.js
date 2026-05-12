@@ -1,10 +1,11 @@
 // src/screens/onboarding/AccountSetupScreen.js
 import React, { useState } from "react";
-import { StyleSheet, Text, View, SafeAreaView, TouchableOpacity, TextInput } from "react-native";
+import { StyleSheet, Text, View, TouchableOpacity, TextInput } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "../../theme/colors";
 import CustomButton from "../../components/ui/CustomButton";
 import ProgressBar from "../../components/ui/ProgressBar";
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function AccountSetupScreen({ navigation }) {
   // --- STATE ---
@@ -185,7 +186,7 @@ export default function AccountSetupScreen({ navigation }) {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <react-native style={styles.container}>
       <View style={styles.topBar}>
         <TouchableOpacity style={styles.backButton} onPress={handleBack}>
           <Ionicons name="arrow-back" size={28} color={COLORS.textLight} />
@@ -196,7 +197,7 @@ export default function AccountSetupScreen({ navigation }) {
       <View style={styles.dynamicContainer}>{renderStepContent()}</View>
 
       <View style={styles.buttonContainer}>{renderFooterButtons()}</View>
-    </SafeAreaView>
+    </react-native>
   );
 }
 

@@ -17,6 +17,8 @@ import CrewScreen from './src/screens/dashboard/CrewScreen';
 import QuestsScreen from './src/screens/dashboard/QuestsScreen';
 import YouScreen from './src/screens/dashboard/YouScreen';
 
+import StravaSyncScreen from './src/screens/dashboard/StravaSyncScreen';
+
 import { COLORS } from './src/theme/colors';
 
 const Tab = createBottomTabNavigator();
@@ -90,6 +92,7 @@ export default function App() {
         
         {/* Jouw App Omgeving (Na de onboarding) */}
         <Stack.Screen name="MainTabs" component={MainTabs} />
+        <Stack.Screen name="StravaSync" component={StravaSyncScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );
