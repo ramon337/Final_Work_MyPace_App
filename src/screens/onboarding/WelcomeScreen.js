@@ -13,7 +13,7 @@ export default function WelcomeScreen({ navigation }) {
       </View>
       <View style={styles.buttonContainer}>
         <Text style={styles.sectionLabel}>Already have an account?</Text>
-        <CustomButton title="Log In" type="secondary" onPress={() => navigation.navigate("MainTabs")} />
+        <CustomButton title="Log In" type="secondary" onPress={() => navigation.navigate("Login")} />
         <View style={{ height: 30 }} />
         <Text style={styles.sectionLabel}>New to MyPace?</Text>
         <CustomButton title="Get Started" type="primary" onPress={() => navigation.navigate("MeetBuddy")} />

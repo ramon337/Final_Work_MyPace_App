@@ -13,7 +13,7 @@ import ProfileIcon from './src/components/icons/ProfileIcon';
 import WelcomeScreen from './src/screens/onboarding/WelcomeScreen';
 import MeetBuddyScreen from './src/screens/onboarding/MeetBuddyScreen';
 import AccountSetupScreen from './src/screens/onboarding/AccountSetupScreen';
-
+import LoginScreen from './src/screens/onboarding/LoginScreen';
 import CrewScreen from './src/screens/dashboard/CrewScreen';
 import QuestsScreen from './src/screens/dashboard/QuestsScreen';
 import YouScreen from './src/screens/dashboard/YouScreen';
@@ -117,7 +117,9 @@ export default function App() {
           /* --- NIET INGELOGD --- */
           <>
             <Stack.Screen name="Welcome" component={WelcomeScreen} />
+            <Stack.Screen name="MeetBuddy" component={MeetBuddyScreen} />
             <Stack.Screen name="AccountSetup" component={AccountSetupScreen} />
+            <Stack.Screen name="Login" component={LoginScreen} />
           </>
         )}
 
