@@ -17,7 +17,9 @@ export default function AccountSetupScreen({ navigation }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [stepOneError, setStepOneError] = useState("");v
+  const [stepOneError, setStepOneError] = useState("");
+  const [crewName, setCrewName] = useState(""); // Voor als ze een crew maken
+  const [inviteCode, setInviteCode] = useState(""); // Voor als ze een code hebben
 
   const totalSteps = 5; // Verhoogd naar 5 stappen!
 
@@ -83,33 +85,77 @@ const handleNext = async () => {
   };
 
   const handleSignUp = async () => {
-    console.log("Bezig met account aanmaken voor:", email);
+    console.log("Bezig met account aanmaken...");
     
-    // Gebruik nu de echte email en password van de gebruiker
-    const { data, error } = await supabase.auth.signUp({
+    // 1. Maak het account in de verborgen kluis
+    const { data: authData, error: authError } = await supabase.auth.signUp({
       email: email, 
       password: password, 
     });
 
-    if (error) {
-      console.error("Fout bij registreren:", error.message);
-      return false; // Geef door dat het mislukt is
+    if (authError) {
+      console.error("Fout bij registreren:", authError.message);
+      return false; 
     }
 
-    if (data.user) {
-      // Maak direct het openbare profiel aan met de echte naam
+    if (authData.user) {
+      const userId = authData.user.id;
+      
+      // 2. Maak het profiel aan, en neem NU OOK het doel (selectedGoal) mee!
       const { error: profileError } = await supabase
         .from('profiles')
         .insert([
-          { id: data.user.id, display_name: name }
+          { 
+            id: userId, 
+            display_name: name,
+            weekly_goal: selectedGoal // Dit komt uit stap 3!
+          }
         ]);
         
       if (profileError) {
         console.error("Fout bij profiel maken:", profileError.message);
-      } else {
-        console.log("Profiel succesvol gekoppeld!");
+        return false;
       }
-      return true; // Geef door dat het gelukt is
+
+      // 3. LOGICA VOOR CREWS (Stap 4 en 5)
+      if (selectedCrewAction === "create" && crewName !== "") {
+        console.log("Nieuwe crew aanmaken:", crewName);
+        
+        // Simpele generator voor een invite code (bijv. "ALPHA-8F3A")
+        const randomCode = crewName.substring(0, 4).toUpperCase() + "-" + Math.random().toString(36).substring(2, 6).toUpperCase();
+
+        const { data: crewData, error: crewError } = await supabase
+          .from('crews')
+          .insert([{ name: crewName, invite_code: randomCode }])
+          .select() // Zorgt dat we de nieuwe Crew ID terugkrijgen
+          .single();
+
+        if (!crewError && crewData) {
+          // Voeg de gebruiker toe aan zijn eigen nieuwe crew
+          await supabase.from('crew_members').insert([{ user_id: userId, crew_id: crewData.id }]);
+          console.log("Crew gemaakt en lid geworden!");
+        }
+      } 
+      else if (selectedCrewAction === "invite" && inviteCode !== "") {
+        console.log("Zoeken naar crew met code:", inviteCode);
+        
+        // Zoek de crew op basis van de code
+        const { data: crewData, error: searchError } = await supabase
+          .from('crews')
+          .select('id')
+          .eq('invite_code', inviteCode)
+          .single();
+
+        if (crewData) {
+          // Voeg gebruiker toe aan de gevonden crew
+          await supabase.from('crew_members').insert([{ user_id: userId, crew_id: crewData.id }]);
+          console.log("Succesvol aangesloten bij crew via code!");
+        } else {
+          console.log("Crew code niet gevonden of fout.");
+        }
+      }
+
+      return true; // Alles is gelukt!
     }
   };
 
@@ -230,7 +276,7 @@ const handleNext = async () => {
               <>
                 <Text style={styles.stepTitle}>Enter your code</Text>
                 <Text style={styles.bodyText}>Paste the invite code you received from your friend below.</Text>
-                <TextInput style={styles.input} placeholder="e.g. MYPACE-1234" placeholderTextColor="#999999" autoCapitalize="characters" />
+                <TextInput style={styles.input} placeholder="e.g. MYPACE-1234" placeholderTextColor="#999999" autoCapitalize="characters" value={inviteCode} onChangeText={setInviteCode}/>
               </>
             )}
 
@@ -246,7 +292,7 @@ const handleNext = async () => {
               <>
                 <Text style={styles.stepTitle}>Name your Crew</Text>
                 <Text style={styles.bodyText}>Give your new running group an awesome name.</Text>
-                <TextInput style={styles.input} placeholder="Crew Name" placeholderTextColor="#999999" />
+                <TextInput style={styles.input} placeholder="Crew Name" placeholderTextColor="#999999" value={crewName} onChangeText={setCrewName}/>
               </>
             )}
 

@@ -1,9 +1,10 @@
-import React from 'react';
+import { React, useState, useEffect } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { useFonts } from 'expo-font';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { supabase } from './src/lib/supabase';
 import CrewIcon from './src/components/icons/CrewIcon';
 import QuestIcon from './src/components/icons/QuestIcon';
 import ProfileIcon from './src/components/icons/ProfileIcon';
@@ -67,12 +68,33 @@ function MainTabs() {
 
 // --- 2. DE HOOFD NAVIGATOR ---
 export default function App() {
+  const [session, setSession] = useState(null);
+  const [isReady, setIsReady] = useState(false); 
+
+  // 1. ALLE HOOKS BOVENAAN (Voor de if-statements!)
   const [fontsLoaded] = useFonts({
     'Baloo-Bold': require('./src/assets/fonts/Baloo2-Bold.ttf'),
-    // 'Inter': require('./src/assets/fonts/Inter-Regular.ttf'), // Zorg dat deze klopt met jouw bestand!
+    // 'Inter': require('./src/assets/fonts/Inter-Regular.ttf'), 
   });
 
-  if (!fontsLoaded) {
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setIsReady(true); 
+    });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
+
+  // 2. NU PAS DE CONDITIES EN RETURNS
+  // Als we óf op Supabase wachten, óf op de fonts wachten, toon het laadscherm:
+  if (!isReady || !fontsLoaded) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background }}>
         <ActivityIndicator size="large" color={COLORS.primaryOrange} />
@@ -80,19 +102,25 @@ export default function App() {
     );
   }
 
-  // NavigationContainer is de schil, Stack.Navigator bevat de schermen
+  // 3. ALS ALLES GELADEN IS, TOON DE NAVIGATIE
   return (
     <NavigationContainer>
-      {/* headerShown: false zorgt dat we geen lelijke standaard titelbalk bovenaan de onboarding krijgen */}
       <Stack.Navigator screenOptions={{ headerShown: false }}>
-        {/* Jouw Onboarding Flow */}
-        <Stack.Screen name="Welcome" component={WelcomeScreen} />
-        <Stack.Screen name="MeetBuddy" component={MeetBuddyScreen} />
-        <Stack.Screen name="AccountSetup" component={AccountSetupScreen} />
         
-        {/* Jouw App Omgeving (Na de onboarding) */}
-        <Stack.Screen name="MainTabs" component={MainTabs} />
-        <Stack.Screen name="StravaSync" component={StravaSyncScreen} />
+        {session && session.user ? (
+          /* --- INGELOGD --- */
+          <>
+            <Stack.Screen name="MainTabs" component={MainTabs} />
+            <Stack.Screen name="StravaSync" component={StravaSyncScreen} />
+          </>
+        ) : (
+          /* --- NIET INGELOGD --- */
+          <>
+            <Stack.Screen name="Welcome" component={WelcomeScreen} />
+            <Stack.Screen name="AccountSetup" component={AccountSetupScreen} />
+          </>
+        )}
+
       </Stack.Navigator>
     </NavigationContainer>
   );
