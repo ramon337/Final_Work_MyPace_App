@@ -4,6 +4,7 @@ import { StyleSheet, Text, View, ScrollView, TouchableOpacity } from 'react-nati
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../theme/colors';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { supabase } from '../../lib/supabase';
 
 export default function StravaSyncScreen({ navigation, route }) {
   const { runs = [] } = route.params || {};
@@ -12,10 +13,70 @@ export default function StravaSyncScreen({ navigation, route }) {
   const alreadySyncedRunIds = [987654321]; 
   const availableRuns = runs.filter(run => !alreadySyncedRunIds.includes(run.id));
 
-  const handleSync = () => {
+const handleSync = async () => {
     const runToSync = availableRuns.find(r => r.id === selectedRunId);
-    console.log("We gaan deze run uploaden naar de Crew:", runToSync.name);
-    navigation.goBack();
+    if (!runToSync) return;
+
+    console.log("We gaan deze run uploaden naar de database:", runToSync.name);
+
+    try {
+      // 1. Haal de ID van de huidige ingelogde gebruiker op
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Je bent niet ingelogd!");
+
+      // 2. Zoek in welke Crew deze gebruiker zit
+      const { data: crewMember, error: crewError } = await supabase
+        .from('crew_members')
+        .select('crew_id')
+        .eq('user_id', user.id)
+        .single();
+
+      if (crewError || !crewMember) {
+        throw new Error("Je zit nog niet in een Crew!");
+      }
+
+      const distanceKm = (runToSync.distance / 1000).toFixed(2);
+      const timeMins = Math.round(runToSync.moving_time / 60);
+
+      // 3. Sla de run op in de 'runs' tabel
+      const { error: runInsertError } = await supabase
+        .from('runs')
+        .insert({
+          user_id: user.id,
+          crew_id: crewMember.crew_id,
+          strava_activity_id: runToSync.id, // Dit voorkomt dubbele uploads later!
+          distance_km: parseFloat(distanceKm),
+          duration_minutes: timeMins,
+          run_date: runToSync.start_date
+        });
+
+      if (runInsertError) throw runInsertError;
+
+      // 4. Tel de minuten op bij het totaal van de Crew
+      // Haal eerst het huidige totaal op:
+      const { data: crew } = await supabase
+        .from('crews')
+        .select('total_minutes')
+        .eq('id', crewMember.crew_id)
+        .single();
+
+      const newTotal = (crew.total_minutes || 0) + timeMins;
+
+      // Update de crew met het nieuwe totaal:
+      await supabase
+        .from('crews')
+        .update({ total_minutes: newTotal })
+        .eq('id', crewMember.crew_id);
+
+      console.log(`🎉 Succes! ${timeMins} minuten toegevoegd aan de Crew!`);
+      
+      // Ga terug naar het dashboard!
+      navigation.goBack();
+
+    } catch (error) {
+      console.error("Fout bij syncen:", error.message);
+      // Hier zou je later een mooie Alert() voor de gebruiker kunnen maken
+    }
   };
 
   return (
