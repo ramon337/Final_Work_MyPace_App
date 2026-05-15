@@ -8,6 +8,7 @@ import { supabase } from './src/lib/supabase';
 import CrewIcon from './src/components/icons/CrewIcon';
 import QuestIcon from './src/components/icons/QuestIcon';
 import ProfileIcon from './src/components/icons/ProfileIcon';
+import { UserProvider } from './src/context/UserContext';
 
 // Importeer je schermen
 import WelcomeScreen from './src/screens/onboarding/WelcomeScreen';
@@ -104,6 +105,7 @@ export default function App() {
 
   // 3. ALS ALLES GELADEN IS, TOON DE NAVIGATIE
   return (
+    <UserProvider>
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         
@@ -125,5 +127,6 @@ export default function App() {
 
       </Stack.Navigator>
     </NavigationContainer>
+    </UserProvider>
   );
 }

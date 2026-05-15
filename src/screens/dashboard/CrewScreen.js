@@ -1,10 +1,11 @@
 // src/screens/main/CrewScreen.js
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity } from "react-native";
+import React, { useEffect } from "react";
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "../../theme/colors";
 import * as WebBrowser from "expo-web-browser";
 import { useAuthRequest, makeRedirectUri } from "expo-auth-session";
-import { useEffect, React } from "react";
+import { useUser } from '../../context/UserContext';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -14,8 +15,20 @@ const stravaEndpoints = {
 };
 
 export default function CrewScreen({ navigation }) {
-  const clientId = "239284";
-  const clientSecret = "60200fc0f94bb76d5459359f3dbda3eb2b923b0d";
+  // --- 1. USER CONTEXT (Data uit de cloud) ---
+  const { crewData, loading, refreshCrewData } = useUser();
+
+  // Ververs de data telkens als dit scherm in beeld komt
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      refreshCrewData();
+    });
+    return unsubscribe;
+  }, [navigation, refreshCrewData]);
+
+  // --- 2. STRAVA LOGICA ---
+  const clientId = "239284"; // Jouw Strava Client ID
+  const clientSecret = "60200fc0f94bb76d5459359f3dbda3eb2b923b0d"; // Jouw Strava Secret
 
   const redirectUri = makeRedirectUri();
 
@@ -29,30 +42,19 @@ export default function CrewScreen({ navigation }) {
     stravaEndpoints,
   );
 
-  // We loggen de URI zodat we hem aan Strava kunnen geven
-  console.log("🚨 MIJN REDIRECT URI IS:", redirectUri);
-
-  // Zodra de gebruiker terugkomt van Strava, wordt deze code wakker:
   useEffect(() => {
     if (response?.type === "success") {
       const { code } = response.params;
-      console.log("Stap 1 gelukt! Tijdelijke code ontvangen:", code);
-
-      // Nu ruilen we de code in voor de échte Access Token
+      console.log("Strava code ontvangen. Inruilen voor token...");
       fetchToken(code);
-    } else if (response?.type === "error") {
-      console.log("Inloggen mislukt of geannuleerd.", response.error);
     }
   }, [response]);
 
   const fetchToken = async (code) => {
     try {
-      // We doen de inruil handmatig met een POST request naar Strava
-      const response = await fetch("https://www.strava.com/oauth/token", {
+      const res = await fetch("https://www.strava.com/oauth/token", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           client_id: clientId,
           client_secret: clientSecret,
@@ -61,16 +63,9 @@ export default function CrewScreen({ navigation }) {
         }),
       });
 
-      const data = await response.json();
-
-      // Strava stuurt de token terug als 'access_token'
+      const data = await res.json();
       if (data.access_token) {
-        console.log("🎉 BINGO! We hebben de Access Token:", data.access_token);
-
-        // Nu we de échte token hebben, halen we de runs op
         fetchStravaActivities(data.access_token);
-      } else {
-        console.log("Strava gaf geen token terug. Response:", data);
       }
     } catch (error) {
       console.error("Fout bij ophalen van token:", error);
@@ -79,40 +74,39 @@ export default function CrewScreen({ navigation }) {
 
   const fetchStravaActivities = async (accessToken) => {
     try {
-      console.log("We gaan de Strava filter aanzetten...");
-
-      // 1. Bereken het tijdstip van exact 3 dagen geleden in 'Epoch' seconden
       const threeDaysAgoSeconds = Math.floor(Date.now() / 1000) - 3 * 24 * 60 * 60;
-
-      // We voegen '?after=...' toe aan de URL. We zetten per_page even op 30 voor de zekerheid.
-      const response = await fetch(`https://www.strava.com/api/v3/athlete/activities?after=${threeDaysAgoSeconds}&per_page=30`, {
+      const res = await fetch(`https://www.strava.com/api/v3/athlete/activities?after=${threeDaysAgoSeconds}&per_page=30`, {
         method: "GET",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
+        headers: { Authorization: `Bearer ${accessToken}` },
       });
 
-      const allActivities = await response.json();
-
-      // 2. Filter op type: We staan alleen deze specifieke hardloop-types toe
+      const allActivities = await res.json();
       const allowedTypes = ["Run", "TrailRun", "VirtualRun"];
-
       const filteredRuns = allActivities.filter((activity) => allowedTypes.includes(activity.type));
 
-      console.log(`BINGO! We sturen nu ${filteredRuns.length} runs door naar de UI.`);
-
-      // STUUR DE GEBRUIKER NAAR HET NIEUWE SCHERM EN GEEF DE RUNS MEE:
       navigation.navigate("StravaSync", { runs: filteredRuns });
     } catch (error) {
       console.error("Fout bij ophalen van runs:", error);
     }
   };
 
+  // --- 3. LOADING STATE ---
+  // Toon een subtiel laadscherm als we nog écht geen data hebben
+  if (loading && !crewData) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={COLORS.primaryOrange} />
+      </View>
+    );
+  }
+
+  // --- 4. UI ---
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      {/* HEADER: Crew Naam & Leden */}
+      
+      {/* HEADER */}
       <View style={styles.header}>
-        <Text style={styles.crewTitle}>Alpha Crew</Text>
+        <Text style={styles.crewTitle}>{crewData?.name || "Geen Crew"}</Text>
 
         <View style={styles.crewMembersContainer}>
           <View style={[styles.avatar, { backgroundColor: COLORS.primaryOrange }]}>
@@ -137,12 +131,12 @@ export default function CrewScreen({ navigation }) {
       <View style={styles.streakBanner}>
         <Ionicons name="flame" size={32} color={COLORS.primaryOrange} style={styles.streakIcon} />
         <View style={styles.streakTextContainer}>
-          <Text style={styles.streakTitle}>Relay streak: 14!</Text>
-          <Text style={styles.streakSubtitle}>The crew remains unstoppable.</Text>
+          <Text style={styles.streakTitle}>Relay streak: Actief!</Text>
+          <Text style={styles.streakSubtitle}>{crewData?.total_minutes || 0} minuten totaal gerend.</Text>
         </View>
       </View>
 
-      {/* BATON HOLDER CARD (Klikbaar!) */}
+      {/* BATON HOLDER CARD */}
       <TouchableOpacity style={styles.batonCard} activeOpacity={0.8} onPress={() => console.log("Baton details openen...")}>
         <View style={styles.batonHeader}>
           <Text style={styles.batonTitle}>Today's Baton Holder</Text>
@@ -167,11 +161,8 @@ export default function CrewScreen({ navigation }) {
       <TouchableOpacity
         style={[styles.stravaButton, !request ? { opacity: 0.5 } : {}]}
         activeOpacity={0.8}
-        disabled={!request} // Knop is uitgeschakeld tot Strava klaar is met laden
-        onPress={() => {
-          console.log("Strava inlogscherm openen...");
-          promptAsync();
-        }}
+        disabled={!request}
+        onPress={() => promptAsync()}
       >
         <Ionicons name="fitness" size={24} color="#FFF" style={{ marginRight: 10 }} />
         <Text style={styles.stravaButtonText}>Sync run from Strava</Text>
@@ -211,19 +202,6 @@ export default function CrewScreen({ navigation }) {
             <Text style={styles.activityMeta}>3.1 km • 18 mins • Yesterday</Text>
           </View>
         </View>
-
-        {/* Activity Item 3 (Baton pass) */}
-        <View style={styles.activityItem}>
-          <View style={[styles.smallAvatar, { backgroundColor: "#262a3e", borderWidth: 1, borderColor: COLORS.secondaryYellow }]}>
-            <Text style={styles.smallAvatarText}>🏃</Text>
-          </View>
-          <View style={styles.activityDetails}>
-            <Text style={styles.activityUser}>
-              Baton Passed <Text style={styles.activityAction}>to Sarah</Text>
-            </Text>
-            <Text style={styles.activityMeta}>Yesterday at 20:00</Text>
-          </View>
-        </View>
       </View>
     </ScrollView>
   );
@@ -233,6 +211,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background, // #191c2f
+  },
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+    justifyContent: "center",
+    alignItems: "center",
   },
   contentContainer: {
     padding: 20,
@@ -248,6 +232,7 @@ const styles = StyleSheet.create({
     fontFamily: "Baloo-Bold",
     color: COLORS.textLight,
     marginBottom: 10,
+    textTransform: "capitalize",
   },
   crewMembersContainer: {
     flexDirection: "row",
@@ -261,22 +246,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 3,
-    borderColor: COLORS.background, // Creëert het 'overlap' effect
+    borderColor: COLORS.background,
   },
   avatarText: {
     color: "#FFF",
     fontSize: 14,
     fontWeight: "bold",
   },
-  addMemberAvatar: {
-    backgroundColor: "#3a3f58",
-    borderStyle: "dashed",
-    borderWidth: 2,
-    borderColor: "#666",
-  },
   streakBanner: {
     flexDirection: "row",
-    backgroundColor: "rgba(231, 84, 56, 0.1)", // Subtiel oranje
+    backgroundColor: "rgba(231, 84, 56, 0.1)", 
     borderWidth: 1,
     borderColor: "rgba(231, 84, 56, 0.3)",
     borderRadius: 16,
@@ -365,7 +344,7 @@ const styles = StyleSheet.create({
     marginLeft: 6,
   },
   stravaButton: {
-    backgroundColor: "#FC4C02", // De officiële Strava Oranje kleur!
+    backgroundColor: "#FC4C02",
     flexDirection: "row",
     borderRadius: 16,
     paddingVertical: 16,
@@ -408,7 +387,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 15,
-    backgroundColor: "rgba(38, 42, 62, 0.5)", // Iets donkerder dan cardBackground
+    backgroundColor: "rgba(38, 42, 62, 0.5)", 
     padding: 12,
     borderRadius: 12,
   },

@@ -1,6 +1,6 @@
 // src/screens/main/StravaSyncScreen.js
-import React, { useState } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../theme/colors';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -9,22 +9,37 @@ import { supabase } from '../../lib/supabase';
 export default function StravaSyncScreen({ navigation, route }) {
   const { runs = [] } = route.params || {};
   const [selectedRunId, setSelectedRunId] = useState(null);
+  
+  // State voor de database check
+  const [syncedIds, setSyncedIds] = useState([]);
+  const [isCheckingDb, setIsCheckingDb] = useState(true);
 
-  const alreadySyncedRunIds = [987654321]; 
-  const availableRuns = runs.filter(run => !alreadySyncedRunIds.includes(run.id));
+  // 1. Haal op welke runs al in de database staan
+  useEffect(() => {
+    const fetchSyncedIds = async () => {
+      const { data } = await supabase.from('runs').select('strava_activity_id');
+      if (data) {
+        setSyncedIds(data.map(r => r.strava_activity_id));
+      }
+      setIsCheckingDb(false); // We zijn klaar met checken!
+    };
+    fetchSyncedIds();
+  }, []);
 
-const handleSync = async () => {
+  // 2. Filter de runs (Dit is nu de ENIGE keer dat we availableRuns aanmaken)
+  const availableRuns = runs.filter(run => !syncedIds.includes(run.id));
+
+  // 3. De Sync Functie
+  const handleSync = async () => {
     const runToSync = availableRuns.find(r => r.id === selectedRunId);
     if (!runToSync) return;
 
     console.log("We gaan deze run uploaden naar de database:", runToSync.name);
 
     try {
-      // 1. Haal de ID van de huidige ingelogde gebruiker op
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Je bent niet ingelogd!");
 
-      // 2. Zoek in welke Crew deze gebruiker zit
       const { data: crewMember, error: crewError } = await supabase
         .from('crew_members')
         .select('crew_id')
@@ -38,13 +53,12 @@ const handleSync = async () => {
       const distanceKm = (runToSync.distance / 1000).toFixed(2);
       const timeMins = Math.round(runToSync.moving_time / 60);
 
-      // 3. Sla de run op in de 'runs' tabel
       const { error: runInsertError } = await supabase
         .from('runs')
         .insert({
           user_id: user.id,
           crew_id: crewMember.crew_id,
-          strava_activity_id: runToSync.id, // Dit voorkomt dubbele uploads later!
+          strava_activity_id: runToSync.id,
           distance_km: parseFloat(distanceKm),
           duration_minutes: timeMins,
           run_date: runToSync.start_date
@@ -52,8 +66,6 @@ const handleSync = async () => {
 
       if (runInsertError) throw runInsertError;
 
-      // 4. Tel de minuten op bij het totaal van de Crew
-      // Haal eerst het huidige totaal op:
       const { data: crew } = await supabase
         .from('crews')
         .select('total_minutes')
@@ -62,20 +74,16 @@ const handleSync = async () => {
 
       const newTotal = (crew.total_minutes || 0) + timeMins;
 
-      // Update de crew met het nieuwe totaal:
       await supabase
         .from('crews')
         .update({ total_minutes: newTotal })
         .eq('id', crewMember.crew_id);
 
       console.log(`🎉 Succes! ${timeMins} minuten toegevoegd aan de Crew!`);
-      
-      // Ga terug naar het dashboard!
       navigation.goBack();
 
     } catch (error) {
       console.error("Fout bij syncen:", error.message);
-      // Hier zou je later een mooie Alert() voor de gebruiker kunnen maken
     }
   };
 
@@ -89,69 +97,77 @@ const handleSync = async () => {
         <View style={{ width: 28 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
-        {availableRuns.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Ionicons name="checkmark-done-circle-outline" size={60} color={COLORS.secondaryYellow} />
-            <Text style={styles.emptyText}>You're all caught up!</Text>
-            <Text style={styles.emptySubtext}>No new runs found in the last 3 days.</Text>
-          </View>
-        ) : (
-          availableRuns.map((run) => {
-            const isSelected = selectedRunId === run.id;
-            const distanceKm = (run.distance / 1000).toFixed(2);
-            const timeMins = Math.round(run.moving_time / 60);
-            
-            const runDate = new Date(run.start_date_local).toLocaleDateString('nl-NL', {
-              weekday: 'short', day: 'numeric', month: 'short'
-            });
+      {/* ALS WE NOG AAN HET CHECKEN ZIJN, TOON EEN LADER */}
+      {isCheckingDb ? (
+        <View style={styles.emptyState}>
+          <ActivityIndicator size="large" color={COLORS.primaryOrange} />
+          <Text style={[styles.emptySubtext, { marginTop: 20 }]}>Checking previous uploads...</Text>
+        </View>
+      ) : (
+        <ScrollView contentContainerStyle={styles.content}>
+          {availableRuns.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Ionicons name="checkmark-done-circle-outline" size={60} color={COLORS.secondaryYellow} />
+              <Text style={styles.emptyText}>You're all caught up!</Text>
+              <Text style={styles.emptySubtext}>No new runs found in the last 3 days.</Text>
+            </View>
+          ) : (
+            availableRuns.map((run) => {
+              const isSelected = selectedRunId === run.id;
+              const distanceKm = (run.distance / 1000).toFixed(2);
+              const timeMins = Math.round(run.moving_time / 60);
+              
+              const runDate = new Date(run.start_date_local).toLocaleDateString('nl-NL', {
+                weekday: 'short', day: 'numeric', month: 'short'
+              });
 
-            return (
-              <TouchableOpacity 
-                key={run.id}
-                activeOpacity={0.9}
-                onPress={() => setSelectedRunId(run.id)}
-                style={[
-                  styles.runCard,
-                  isSelected ? styles.runCardSelected : null
-                ]}
-              >
-                {isSelected ? (
-                  <View style={styles.checkmarkBadge}>
-                    <Ionicons name="checkmark" size={16} color="#FFF" />
-                  </View>
-                ) : null}
-
-                <View style={styles.runInfo}>
-                  <Text style={styles.runDate}>{runDate} • {run.type}</Text>
-                  <Text style={styles.runName}>{run.name}</Text>
-                  
-                  {run.description ? (
-                    <Text style={styles.runDesc} numberOfLines={2}>{run.description}</Text>
+              return (
+                <TouchableOpacity 
+                  key={run.id}
+                  activeOpacity={0.9}
+                  onPress={() => setSelectedRunId(run.id)}
+                  style={[
+                    styles.runCard,
+                    isSelected ? styles.runCardSelected : null
+                  ]}
+                >
+                  {isSelected ? (
+                    <View style={styles.checkmarkBadge}>
+                      <Ionicons name="checkmark" size={16} color="#FFF" />
+                    </View>
                   ) : null}
 
-                  <View style={styles.statsRow}>
-                    <View style={styles.statBox}>
-                      <Text style={styles.statValue}>{distanceKm}</Text>
-                      <Text style={styles.statLabel}>km</Text>
-                    </View>
-                    <View style={styles.statBox}>
-                      <Text style={styles.statValue}>{timeMins}</Text>
-                      <Text style={styles.statLabel}>min</Text>
-                    </View>
-                    <View style={styles.statBox}>
-                      <Ionicons name="map-outline" size={24} color={COLORS.secondaryYellow} />
-                      <Text style={styles.statLabel}>Route</Text>
+                  <View style={styles.runInfo}>
+                    <Text style={styles.runDate}>{runDate} • {run.type}</Text>
+                    <Text style={styles.runName}>{run.name}</Text>
+                    
+                    {run.description ? (
+                      <Text style={styles.runDesc} numberOfLines={2}>{run.description}</Text>
+                    ) : null}
+
+                    <View style={styles.statsRow}>
+                      <View style={styles.statBox}>
+                        <Text style={styles.statValue}>{distanceKm}</Text>
+                        <Text style={styles.statLabel}>km</Text>
+                      </View>
+                      <View style={styles.statBox}>
+                        <Text style={styles.statValue}>{timeMins}</Text>
+                        <Text style={styles.statLabel}>min</Text>
+                      </View>
+                      <View style={styles.statBox}>
+                        <Ionicons name="map-outline" size={24} color={COLORS.secondaryYellow} />
+                        <Text style={styles.statLabel}>Route</Text>
+                      </View>
                     </View>
                   </View>
-                </View>
-              </TouchableOpacity>
-            );
-          })
-        )}
-      </ScrollView>
+                </TouchableOpacity>
+              );
+            })
+          )}
+        </ScrollView>
+      )}
 
-      {selectedRunId !== null ? (
+      {selectedRunId !== null && !isCheckingDb ? (
         <View style={styles.footer}>
           <TouchableOpacity style={styles.continueButton} onPress={handleSync}>
             <Text style={styles.continueButtonText}>Sync to Crew</Text>
