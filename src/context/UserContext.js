@@ -26,7 +26,7 @@ export const UserProvider = ({ children }) => {
     const fetchCrew = async () => {
       const { data: memberData } = await supabase
         .from('crew_members')
-        .select('crews(id, name, total_minutes)')
+        .select('crews(id, name, total_minutes, invite_code)')
         .eq('user_id', user.id)
         .single();
       return memberData;
