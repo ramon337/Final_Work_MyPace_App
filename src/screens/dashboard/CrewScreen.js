@@ -116,6 +116,15 @@ export default function CrewScreen({ navigation }) {
       
       {/* HEADER */}
       <View style={styles.header}>
+        {/* NIEUW: De Settings knop zwevend in de rechterbovenhoek */}
+        <TouchableOpacity 
+          style={styles.settingsButtonRight} 
+          activeOpacity={0.7}
+          onPress={() => navigation.navigate("CrewSettings")}
+        >
+          <Ionicons name="settings-outline" size={28} color={COLORS.textMuted} />
+        </TouchableOpacity>
+
         <Text style={styles.crewTitle}>{crewData?.name || "Geen Crew"}</Text>
 
         <View style={styles.crewMembersContainer}>
@@ -134,13 +143,8 @@ export default function CrewScreen({ navigation }) {
           <View style={[styles.avatar, { backgroundColor: "#e74c3c", marginLeft: -15 }]}>
             <Text style={styles.avatarText}>R</Text>
           </View>
+          {/* Het overlappende tandwieltje is hier nu weg! */}
         </View>
-        {crewData?.invite_code && (
-          <TouchableOpacity style={styles.inviteBadge} onPress={handleShareCode} activeOpacity={0.7}>
-            <Ionicons name="share-social-outline" size={16} color={COLORS.secondaryYellow} />
-            <Text style={styles.inviteText}>Code: {crewData.invite_code}</Text>
-          </TouchableOpacity>
-        )}
       </View>
 
       {/* STREAK BANNER */}
@@ -242,6 +246,15 @@ const styles = StyleSheet.create({
     marginTop: 50,
     marginBottom: 30,
     alignItems: "center",
+    position: 'relative',
+    width: '100%',
+  },
+  settingsButtonRight: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    padding: 5,
+    zIndex: 10,
   },
   crewTitle: {
     fontSize: 36,
@@ -439,23 +452,5 @@ const styles = StyleSheet.create({
     fontFamily: "Inter",
     fontSize: 12,
   },
-  inviteBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(251, 191, 36, 0.1)', // Subtiel geel
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    marginTop: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(251, 191, 36, 0.3)',
-  },
-  inviteText: {
-    color: COLORS.secondaryYellow,
-    fontFamily: 'Inter',
-    fontWeight: 'bold',
-    fontSize: 14,
-    marginLeft: 8,
-    letterSpacing: 1,
-  },
+
 });
