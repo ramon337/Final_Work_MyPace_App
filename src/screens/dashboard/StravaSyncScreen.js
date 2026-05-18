@@ -74,10 +74,24 @@ export default function StravaSyncScreen({ navigation, route }) {
 
       const newTotal = (crew.total_minutes || 0) + timeMins;
 
-      await supabase
-        .from('crews')
-        .update({ total_minutes: newTotal })
-        .eq('id', crewMember.crew_id);
+ const { data: activeQuests } = await supabase
+        .from('crew_quests')
+        .select('id, current_progress')
+        .eq('crew_id', crewMember.crew_id)
+        .eq('type', 'minutes'); // We pakken alleen de minuten-quests
+
+      if (activeQuests) {
+        // Loop door de actieve quests heen (vaak is het er nu 1, maar handig voor later)
+        for (const quest of activeQuests) {
+          const questNewProgress = (quest.current_progress || 0) + timeMins;
+          
+          await supabase
+            .from('crew_quests')
+            .update({ current_progress: questNewProgress })
+            .eq('id', quest.id);
+        }
+        console.log(`🚀 Quest voortgang succesvol verhoogd met ${timeMins} minuten!`);
+      }
 
       console.log(`🎉 Succes! ${timeMins} minuten toegevoegd aan de Crew!`);
       navigation.goBack();

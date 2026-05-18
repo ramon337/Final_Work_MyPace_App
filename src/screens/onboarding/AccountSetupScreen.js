@@ -109,19 +109,36 @@ export default function AccountSetupScreen({ navigation }) {
       const { error: profileError } = await supabase.from("profiles").insert([{ id: userId, display_name: name, weekly_goal: selectedGoal }]);
       if (profileError) return false;
 
-      // --- 4. KOPPEL DE CREW ---
+      // --- 4. KOPPEL DE CREW EN MAAK QUEST AAN ---
       if (selectedCrewAction === "create" && crewName !== "") {
         const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
         const randomCode = Array.from({ length: 6 })
           .map(() => chars[Math.floor(Math.random() * chars.length)])
           .join("");
+          
         const { data: crewData } = await supabase
           .from("crews")
           .insert([{ name: crewName, invite_code: randomCode }])
           .select()
           .single();
+          
         if (crewData) {
+          // 1. Maak de gebruiker lid van de nieuwe crew
           await supabase.from("crew_members").insert([{ user_id: userId, crew_id: crewData.id }]);
+          
+          // 2. 🚀 NIEUW: Koppel direct de eerste gezamenlijke Quest aan de Crew!
+          await supabase.from("crew_quests").insert([
+            {
+              crew_id: crewData.id,
+              title: "Route 66 Challenge",
+              subtitle: "Run the legendary highway across the US!",
+              target_amount: 3940, // Bijvoorbeeld 3940 minuten
+              current_progress: 0,
+              type: "minutes"
+            }
+          ]);
+          
+          console.log("Crew gemaakt, lid geworden en Quest gekoppeld!");
         }
       } else if (selectedCrewAction === "invite" && verifiedCrewId !== null) {
         // We gebruiken hier het verifiedCrewId dat we in stap 1 al hadden gevonden!
