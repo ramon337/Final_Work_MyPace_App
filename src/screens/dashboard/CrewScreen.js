@@ -74,8 +74,8 @@ export default function CrewScreen({ navigation }) {
 
   const fetchStravaActivities = async (accessToken) => {
     try {
-      const threeDaysAgoSeconds = Math.floor(Date.now() / 1000) - 3 * 24 * 60 * 60;
-      const res = await fetch(`https://www.strava.com/api/v3/athlete/activities?after=${threeDaysAgoSeconds}&per_page=30`, {
+      const FilterDaysAgo = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60;
+      const res = await fetch(`https://www.strava.com/api/v3/athlete/activities?after=${FilterDaysAgo}&per_page=30`, {
         method: "GET",
         headers: { Authorization: `Bearer ${accessToken}` },
       });

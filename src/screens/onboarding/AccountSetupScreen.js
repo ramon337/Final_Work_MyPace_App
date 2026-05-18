@@ -1,6 +1,6 @@
 // src/screens/onboarding/AccountSetupScreen.js
 import React, { useState } from "react";
-import { StyleSheet, Text, View, TouchableOpacity, TextInput } from "react-native";
+import { StyleSheet, Text, View, TouchableOpacity, TextInput, Image } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "../../theme/colors";
 import CustomButton from "../../components/ui/CustomButton";
@@ -9,21 +9,26 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
 
 export default function AccountSetupScreen({ navigation }) {
-  // --- STATE ---
   const [currentStep, setCurrentStep] = useState(1);
-  const [selectedGoal, setSelectedGoal] = useState(null); // Voor stap 3
-  const [selectedCrewAction, setSelectedCrewAction] = useState(null); // Voor stap 4
+  const [selectedGoal, setSelectedGoal] = useState(null); 
+  const [selectedCrewAction, setSelectedCrewAction] = useState(null); 
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [stepOneError, setStepOneError] = useState("");
-  const [crewName, setCrewName] = useState(""); // Voor als ze een crew maken
-  const [inviteCode, setInviteCode] = useState(""); // Voor als ze een code hebben
+  const [crewName, setCrewName] = useState(""); 
+  const [inviteCode, setInviteCode] = useState(""); 
+  const [avatarUri, setAvatarUri] = useState(null); 
 
-  const totalSteps = 5; // Verhoogd naar 5 stappen!
+  // DE MAGIE: We hebben intern 6 schermen, maar tonen er maar 5 aan de gebruiker
+  const internalSteps = 6;
+  const displayTotalSteps = 5; 
 
-  // --- LOGICA ---
+  // We berekenen welk nummer de progressiebalk moet tonen
+  // Als we NA het buddy scherm (stap 4) zijn, trekken we er 1 af voor de UI
+  const displayStep = currentStep > 4 ? currentStep - 1 : currentStep;
+
   const handleBack = () => {
     if (currentStep > 1) {
       setCurrentStep(currentStep - 1);
@@ -32,148 +37,85 @@ export default function AccountSetupScreen({ navigation }) {
     }
   };
 
-const handleNext = async () => {
-    // POORTWACHTER VOOR STAP 1
+  const handleNext = async () => {
     if (currentStep === 1) {
       if (!name || !email || !password) {
         setStepOneError("Please fill in all fields.");
-        return; // Stop de functie, ga niet naar stap 2!
+        return; 
       }
-      
-      // Simpele check of het op een e-mailadres lijkt (bevat een @ en een punt)
       const emailRegex = /\S+@\S+\.\S+/;
       if (!emailRegex.test(email)) {
         setStepOneError("Please enter a valid email address.");
         return;
       }
-      
-      // Supabase eist minimaal 6 tekens
       if (password.length < 6) {
         setStepOneError("Password must be at least 6 characters long.");
         return;
       }
-      
-      // Als alles goed is, haal de error weg voor de zekerheid
       setStepOneError("");
     }
 
-    // DE NORMALE NAVIGATIE LOGICA
-    if (currentStep < totalSteps) {
+    if (currentStep < internalSteps) {
       setCurrentStep(currentStep + 1);
     } else {
       console.log("Setup Compleet! Account opslaan in database...");
       const success = await handleSignUp();
-      
       if (success) {
         navigation.navigate('MainTabs');
       } else {
-        console.log("Er ging iets mis bij Supabase, we blijven op dit scherm.");
+        console.log("Er ging iets mis bij Supabase.");
       }
     }
   };
 
   const handleSkip = () => {
-    // Wis de selectie van de huidige stap voordat we verder gaan
-    if (currentStep === 3) {
-      setSelectedGoal(null);
-    } else if (currentStep === 4) {
-      setSelectedCrewAction(null);
-    }
-
-    // Ga nu pas naar de volgende stap
+    if (currentStep === 2) setAvatarUri(null);
+    if (currentStep === 3) setSelectedGoal(null);
     setCurrentStep(currentStep + 1);
   };
 
   const handleSignUp = async () => {
-    console.log("Bezig met account aanmaken...");
-    
-    // 1. Maak het account in de verborgen kluis
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email: email, 
-      password: password, 
-    });
-
-    if (authError) {
-      console.error("Fout bij registreren:", authError.message);
-      return false; 
-    }
+    const { data: authData, error: authError } = await supabase.auth.signUp({ email, password });
+    if (authError) return false; 
 
     if (authData.user) {
       const userId = authData.user.id;
       
-      // 2. Maak het profiel aan, en neem NU OOK het doel (selectedGoal) mee!
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .insert([
-          { 
-            id: userId, 
-            display_name: name,
-            weekly_goal: selectedGoal // Dit komt uit stap 3!
-          }
-        ]);
-        
-      if (profileError) {
-        console.error("Fout bij profiel maken:", profileError.message);
-        return false;
-      }
+      const { error: profileError } = await supabase.from('profiles').insert([
+        { id: userId, display_name: name, weekly_goal: selectedGoal }
+      ]);
+      if (profileError) return false;
 
-      // 3. LOGICA VOOR CREWS (Stap 4 en 5)
       if (selectedCrewAction === "create" && crewName !== "") {
-        console.log("Nieuwe crew aanmaken:", crewName);
-        
-        // Simpele generator voor een invite code (bijv. "ALPHA-8F3A")
         const randomCode = crewName.substring(0, 4).toUpperCase() + "-" + Math.random().toString(36).substring(2, 6).toUpperCase();
-
-        const { data: crewData, error: crewError } = await supabase
-          .from('crews')
-          .insert([{ name: crewName, invite_code: randomCode }])
-          .select() // Zorgt dat we de nieuwe Crew ID terugkrijgen
-          .single();
-
-        if (!crewError && crewData) {
-          // Voeg de gebruiker toe aan zijn eigen nieuwe crew
-          await supabase.from('crew_members').insert([{ user_id: userId, crew_id: crewData.id }]);
-          console.log("Crew gemaakt en lid geworden!");
-        }
+        const { data: crewData } = await supabase.from('crews').insert([{ name: crewName, invite_code: randomCode }]).select().single();
+        if (crewData) await supabase.from('crew_members').insert([{ user_id: userId, crew_id: crewData.id }]);
       } 
       else if (selectedCrewAction === "invite" && inviteCode !== "") {
-        console.log("Zoeken naar crew met code:", inviteCode);
-        
-        // Zoek de crew op basis van de code
-        const { data: crewData, error: searchError } = await supabase
-          .from('crews')
-          .select('id')
-          .eq('invite_code', inviteCode)
-          .single();
-
-        if (crewData) {
-          // Voeg gebruiker toe aan de gevonden crew
-          await supabase.from('crew_members').insert([{ user_id: userId, crew_id: crewData.id }]);
-          console.log("Succesvol aangesloten bij crew via code!");
-        } else {
-          console.log("Crew code niet gevonden of fout.");
-        }
+        const { data: crewData } = await supabase.from('crews').select('id').eq('invite_code', inviteCode).single();
+        if (crewData) await supabase.from('crew_members').insert([{ user_id: userId, crew_id: crewData.id }]);
       }
-
-      return true; // Alles is gelukt!
+      return true; 
     }
   };
 
-  // --- DYNAMISCHE ONDERKANT (Knoppen) ---
   const renderFooterButtons = () => {
-    // 1. We bepalen eerst even slim wanneer de Continue knop wél zichtbaar is
-    const showContinue = currentStep === 1 || currentStep === 2 || currentStep === 5 || (currentStep === 3 && selectedGoal !== null) || (currentStep === 4 && selectedCrewAction !== null);
+    const showContinue = 
+      currentStep === 1 || 
+      (currentStep === 2 && avatarUri !== null) || 
+      (currentStep === 3 && selectedGoal !== null) || 
+      currentStep === 4 || 
+      (currentStep === 5 && selectedCrewAction !== null) || 
+      currentStep === 6;
 
     return (
       <View style={styles.footerWrapper}>
-        {/* Vaste plek 1: De Primary Button (Continue) */}
-        {/* Dit blokje is áltijd even hoog, of de knop er nu is of niet. 
-            Hierdoor verspringt er nooit iets! */}
-        <View style={styles.primaryButtonSlot}>{showContinue && <CustomButton title={currentStep === totalSteps ? "Finish Setup" : "Continue"} type="primary" onPress={handleNext} />}</View>
+        <View style={styles.primaryButtonSlot}>
+          {showContinue && <CustomButton title={currentStep === internalSteps ? "Finish Setup" : "Continue"} type="primary" onPress={handleNext} />}
+        </View>
 
-        {/* Vaste plek 2: De Skip Button (Onder de Continue knop) */}
         <View style={styles.skipButtonSlot}>
-          {(currentStep === 3 || currentStep === 4) && (
+          {(currentStep === 2 || currentStep === 3) && (
             <TouchableOpacity onPress={handleSkip} style={styles.skipButton}>
               <Text style={styles.skipText}>Skip for now</Text>
             </TouchableOpacity>
@@ -183,28 +125,24 @@ const handleNext = async () => {
     );
   };
 
-  // --- DYNAMISCHE CONTENT ---
   const renderStepContent = () => {
+    const firstName = name ? name.split(" ")[0] : "there";
+
     switch (currentStep) {
       case 1:
         return (
           <View style={styles.content}>
             <Text style={styles.stepTitle}>Registration</Text>
-            
-            {/* NIEUW: Toon de error alleen als er eentje is */}
             {stepOneError !== "" && (
               <View style={styles.errorBox}>
                 <Ionicons name="warning-outline" size={20} color="#FF6B6B" />
                 <Text style={styles.errorText}>{stepOneError}</Text>
               </View>
             )}
-
             <Text style={styles.sectionLabel}>What's your name?</Text>
             <TextInput style={styles.input} placeholder="Enter your name" placeholderTextColor="#999999" value={name} onChangeText={setName} />
-            
             <Text style={styles.sectionLabel}>What's your email?</Text>
             <TextInput style={styles.input} placeholder="Enter your email" placeholderTextColor="#999999" keyboardType="email-address" autoCapitalize="none" value={email} onChangeText={setEmail} />
-            
             <Text style={styles.sectionLabel}>Choose your password</Text>
             <TextInput style={styles.input} placeholder="Enter your password" placeholderTextColor="#999999" secureTextEntry={true} value={password} onChangeText={setPassword} />
           </View>
@@ -215,13 +153,15 @@ const handleNext = async () => {
             <Text style={styles.stepTitle}>Pick a profile picture</Text>
             <Text style={styles.bodyText}>Show your crew who they are running with! You can always change this later.</Text>
             <View style={styles.avatarContainer}>
-              <TouchableOpacity style={styles.avatarPlaceholder} activeOpacity={0.8}>
-                <Ionicons name="camera" size={48} color={COLORS.textDark} />
-                <View style={styles.plusBadge}>
-                  <Ionicons name="add" size={20} color={COLORS.background} />
-                </View>
+              <TouchableOpacity 
+                style={[styles.avatarPlaceholder, avatarUri && { backgroundColor: 'rgba(92, 190, 136, 0.2)', borderColor: COLORS.mascotGreen, borderWidth: 2 }]} 
+                activeOpacity={0.8}
+                onPress={() => setAvatarUri(avatarUri ? null : "simulated_image_url")}
+              >
+                {avatarUri ? <Ionicons name="checkmark" size={48} color={COLORS.mascotGreen} /> : <Ionicons name="camera" size={48} color={COLORS.textDark} />}
+                {!avatarUri && <View style={styles.plusBadge}><Ionicons name="add" size={20} color={COLORS.background} /></View>}
               </TouchableOpacity>
-              <Text style={styles.uploadText}>Tap to upload</Text>
+              <Text style={styles.uploadText}>{avatarUri ? "Looking good!" : "Tap to upload"}</Text>
             </View>
           </View>
         );
@@ -230,16 +170,9 @@ const handleNext = async () => {
           <View style={styles.content}>
             <Text style={styles.stepTitle}>Set your weekly goal</Text>
             <Text style={styles.bodyText}>Consistency is key! How many runs do you want to aim for each week?</Text>
-
             <View style={styles.optionsRow}>
               {[1, 2, 3].map((num) => (
-                <TouchableOpacity
-                  key={num}
-                  style={[styles.goalBox, selectedGoal === num && styles.boxSelected]}
-                  // DEZE REGEL IS AANGEPAST:
-                  onPress={() => setSelectedGoal(selectedGoal === num ? null : num)}
-                  activeOpacity={0.7}
-                >
+                <TouchableOpacity key={num} style={[styles.goalBox, selectedGoal === num && styles.boxSelected]} onPress={() => setSelectedGoal(selectedGoal === num ? null : num)} activeOpacity={0.7}>
                   <Text style={[styles.goalNumber, selectedGoal === num && styles.textSelected]}>{num}</Text>
                 </TouchableOpacity>
               ))}
@@ -248,28 +181,36 @@ const handleNext = async () => {
         );
       case 4:
         return (
+          <View style={[styles.content, styles.buddyScreenContainer]}>
+            <View style={styles.speechBubbleLarge}>
+              <Text style={styles.speechTextLarge}>
+                Hi <Text style={{color: COLORS.primaryOrange, fontFamily: 'Baloo-Bold', fontSize: 20}}>{firstName}</Text>, enough about you now!
+                {"\n\n"}
+                In MyPace it's all about motivation. Let's join a crew so you can achieve goals together.
+              </Text>
+            </View>
+            <View style={styles.largeBuddyContainer}>
+              <Image source={require('../../assets/images/mascot.png')} style={{ height: 260, width: 250, marginTop: 100 }} />
+            </View>
+          </View>
+        );
+      case 5:
+        return (
           <View style={styles.content}>
             <Text style={styles.stepTitle}>Stronger Together!</Text>
             <Text style={styles.bodyText}>Running is more fun with friends. What's your plan?</Text>
-
-            {/* Optie 1: Invite */}
             <TouchableOpacity style={[styles.crewCard, selectedCrewAction === "invite" && styles.boxSelected]} onPress={() => setSelectedCrewAction(selectedCrewAction === "invite" ? null : "invite")}>
               <Text style={[styles.crewCardText, selectedCrewAction === "invite" && styles.textSelected]}>I have an invite code</Text>
             </TouchableOpacity>
-
-            {/* Optie 2: Zoeken */}
             <TouchableOpacity style={[styles.crewCard, selectedCrewAction === "find" && styles.boxSelected]} onPress={() => setSelectedCrewAction(selectedCrewAction === "find" ? null : "find")}>
               <Text style={[styles.crewCardText, selectedCrewAction === "find" && styles.textSelected]}>I'm looking for a group</Text>
             </TouchableOpacity>
-
-            {/* Optie 3: Zelf maken */}
             <TouchableOpacity style={[styles.crewCard, selectedCrewAction === "create" && styles.boxSelected]} onPress={() => setSelectedCrewAction(selectedCrewAction === "create" ? null : "create")}>
               <Text style={[styles.crewCardText, selectedCrewAction === "create" && styles.textSelected]}>I want to create my own Crew</Text>
             </TouchableOpacity>
           </View>
         );
-      case 5:
-        // Deze stap past zich aan op basis van wat je in stap 4 koos!
+      case 6:
         return (
           <View style={styles.content}>
             {selectedCrewAction === "invite" && (
@@ -279,7 +220,6 @@ const handleNext = async () => {
                 <TextInput style={styles.input} placeholder="e.g. MYPACE-1234" placeholderTextColor="#999999" autoCapitalize="characters" value={inviteCode} onChangeText={setInviteCode}/>
               </>
             )}
-
             {selectedCrewAction === "find" && (
               <>
                 <Text style={styles.stepTitle}>Find a Crew</Text>
@@ -287,20 +227,11 @@ const handleNext = async () => {
                 <TextInput style={styles.input} placeholder="Search city or group name..." placeholderTextColor="#999999" />
               </>
             )}
-
             {selectedCrewAction === "create" && (
               <>
                 <Text style={styles.stepTitle}>Name your Crew</Text>
                 <Text style={styles.bodyText}>Give your new running group an awesome name.</Text>
                 <TextInput style={styles.input} placeholder="Crew Name" placeholderTextColor="#999999" value={crewName} onChangeText={setCrewName}/>
-              </>
-            )}
-
-            {/* Als ze op 'Skip' klikten in stap 4: */}
-            {!selectedCrewAction && (
-              <>
-                <Text style={styles.stepTitle}>All set!</Text>
-                <Text style={styles.bodyText}>You can always join or create a Crew later from your dashboard. Let's start running!</Text>
               </>
             )}
           </View>
@@ -312,11 +243,19 @@ const handleNext = async () => {
 
   return (
     <SafeAreaView style={styles.container}>
+      
+      {/* DE CINEMATIC BREAK: Verberg de topbar op stap 4 */}
       <View style={styles.topBar}>
         <TouchableOpacity style={styles.backButton} onPress={handleBack}>
           <Ionicons name="arrow-back" size={28} color={COLORS.textLight} />
         </TouchableOpacity>
-        <ProgressBar currentStep={currentStep} totalSteps={totalSteps} />
+        
+        {currentStep !== 4 ? (
+          <ProgressBar currentStep={displayStep} totalSteps={displayTotalSteps} />
+        ) : (
+          /* Een lege View die de ruimte van de ProgressBar inneemt zodat de back-button links blijft staan */
+          <View style={{ flex: 1 }} />
+        )}
       </View>
 
       <View style={styles.dynamicContainer}>{renderStepContent()}</View>
@@ -327,7 +266,6 @@ const handleNext = async () => {
 }
 
 const styles = StyleSheet.create({
-  // ... (container, topBar, backButton, dynamicContainer, content, stepTitle, bodyText, sectionLabel, input, buttonContainer, avatarContainer, avatarPlaceholder, plusBadge, uploadText blijven allemaal exact hetzelfde als je al had!) ...
   container: { flex: 1, backgroundColor: COLORS.background, alignItems: "center" },
   topBar: { flexDirection: "row", alignItems: "center", width: "90%", marginTop: 10, marginBottom: 30 },
   backButton: { padding: 10, marginLeft: -10 },
@@ -337,94 +275,26 @@ const styles = StyleSheet.create({
   bodyText: { fontSize: 16, fontFamily: "Inter", color: COLORS.textLight, lineHeight: 24, marginBottom: 20 },
   sectionLabel: { fontSize: 16, fontFamily: "Inter", fontWeight: "600", color: COLORS.textLight, marginTop: 15, marginBottom: 8 },
   input: { paddingVertical: 18, paddingHorizontal: 20, borderRadius: 24, marginBottom: 15, width: "100%", backgroundColor: COLORS.textLight, color: COLORS.textDark, fontFamily: "Inter", fontSize: 16 },
-  buttonContainer: { width: "90%", paddingBottom: 0, alignItems: "center" }, // alignItems center toegevoegd voor de skip knop
+  buttonContainer: { width: "90%", paddingBottom: 0, alignItems: "center" }, 
   avatarContainer: { alignItems: "center", marginTop: 40 },
   avatarPlaceholder: { width: 140, height: 140, borderRadius: 70, backgroundColor: COLORS.textLight, justifyContent: "center", alignItems: "center", position: "relative" },
   plusBadge: { position: "absolute", bottom: 5, right: 5, backgroundColor: COLORS.primaryOrange, width: 36, height: 36, borderRadius: 18, justifyContent: "center", alignItems: "center", borderWidth: 3, borderColor: COLORS.background },
   uploadText: { marginTop: 16, fontFamily: "Inter", fontSize: 16, fontWeight: "600", color: COLORS.primaryOrange },
-
-  // --- NIEUWE STIJLEN VOOR STAP 3, 4 EN DE SKIP KNOP ---
-  optionsRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    width: "100%",
-    marginTop: 10,
-  },
-  goalBox: {
-    width: "30%", // Neemt net geen derde van de breedte in
-    aspectRatio: 1, // Maakt er perfecte vierkantjes van
-    backgroundColor: COLORS.cardBackground,
-    borderRadius: 20,
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 2,
-    borderColor: "transparent", // Onzichtbare rand, voorkomt dat hij "springt" bij selectie
-  },
-  goalNumber: {
-    fontSize: 32,
-    fontFamily: "Baloo-Bold",
-    color: COLORS.textLight,
-  },
-  crewCard: {
-    width: "100%",
-    backgroundColor: COLORS.cardBackground,
-    paddingVertical: 20,
-    paddingHorizontal: 20,
-    borderRadius: 20,
-    marginBottom: 15,
-    borderWidth: 2,
-    borderColor: "transparent",
-  },
-  crewCardText: {
-    fontSize: 16,
-    fontFamily: "Inter",
-    fontWeight: "600",
-    color: COLORS.textLight,
-  },
-  boxSelected: {
-    borderColor: COLORS.secondaryYellow,
-    backgroundColor: COLORS.selected,
-  },
-
-  footerWrapper: {
-    width: '100%',
-    alignItems: 'center',
-  },
-  primaryButtonSlot: {
-    width: '100%',
-    minHeight: 60, // De gemiddelde hoogte van een knop. Voorkomt dat het scherm inzakt als de knop weg is!
-    justifyContent: 'center',
-  },
-  skipButtonSlot: {
-    height: 40, // De ruimte die we reserveren voor de skip knop
-    justifyContent: 'center',
-    marginTop: 10, // Een beetje marge tussen Continue en Skip
-  },
-  skipButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-  },
-  skipText: {
-    fontSize: 16,
-    fontFamily: "Inter",
-    fontWeight: "600",
-    color: COLORS.secondaryYellow,
-    textDecorationLine: "underline", // Onderstreept!
-  },
-  errorBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 107, 107, 0.1)',
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#FF6B6B',
-    marginBottom: 15,
-  },
-  errorText: {
-    color: '#FF6B6B',
-    fontFamily: 'Inter',
-    marginLeft: 8,
-    fontSize: 14,
-  },
+  optionsRow: { flexDirection: "row", justifyContent: "space-between", width: "100%", marginTop: 10 },
+  goalBox: { width: "30%", aspectRatio: 1, backgroundColor: COLORS.cardBackground, borderRadius: 20, justifyContent: "center", alignItems: "center", borderWidth: 2, borderColor: "transparent" },
+  goalNumber: { fontSize: 32, fontFamily: "Baloo-Bold", color: COLORS.textLight },
+  crewCard: { width: "100%", backgroundColor: COLORS.cardBackground, paddingVertical: 20, paddingHorizontal: 20, borderRadius: 20, marginBottom: 15, borderWidth: 2, borderColor: "transparent" },
+  crewCardText: { fontSize: 16, fontFamily: "Inter", fontWeight: "600", color: COLORS.textLight },
+  boxSelected: { borderColor: COLORS.secondaryYellow, backgroundColor: COLORS.selected },
+  footerWrapper: { width: '100%', alignItems: 'center' },
+  primaryButtonSlot: { width: '100%', minHeight: 60, justifyContent: 'center' },
+  skipButtonSlot: { height: 40, justifyContent: 'center', marginTop: 10 },
+  skipButton: { paddingVertical: 10, paddingHorizontal: 20 },
+  skipText: { fontSize: 16, fontFamily: "Inter", fontWeight: "600", color: COLORS.secondaryYellow, textDecorationLine: "underline" },
+  errorBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255, 107, 107, 0.1)', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#FF6B6B', marginBottom: 15 },
+  errorText: { color: '#FF6B6B', fontFamily: 'Inter', marginLeft: 8, fontSize: 14 },
+  buddyScreenContainer: { alignItems: 'center', justifyContent: 'center', flex: 1, marginTop: -100 },
+  speechBubbleLarge: { backgroundColor: COLORS.cardBackground, padding: 25, borderRadius: 24, borderBottomRightRadius: 4, marginBottom: 30, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 5, elevation: 4 },
+  speechTextLarge: { color: COLORS.textLight, fontFamily: 'Inter', fontSize: 18, lineHeight: 28, textAlign: 'center' },
+  largeBuddyContainer: { width: 200, height: 200, justifyContent: 'center', alignItems: 'center' }
 });
