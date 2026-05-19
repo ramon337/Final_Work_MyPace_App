@@ -1,23 +1,130 @@
 // src/screens/dashboard/CrewSettingsScreen.js
-import React, { useState } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, Switch, FlatList, Share } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { StyleSheet, Text, View, TouchableOpacity, Switch, FlatList, Share, ActivityIndicator, Alert, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../theme/colors';
 import { useUser } from '../../context/UserContext';
+import { supabase } from '../../lib/supabase';
 
 export default function CrewSettingsScreen({ navigation }) {
-  const { crewData } = useUser();
-  const [isPublic, setIsPublic] = useState(false); // Straks koppelen we dit aan Supabase
+  const { crewData, refreshCrewData } = useUser();
+  const [isPublic, setIsPublic] = useState(false); 
+  const [members, setMembers] = useState([]);
+  const [loadingMembers, setLoadingMembers] = useState(true);
+  const [currentUserId, setCurrentUserId] = useState(null);
+  
+  // We houden lokaal bij of de ingelogde user de leider is
+  const [isLocalAdmin, setIsLocalAdmin] = useState(false);
 
-  // Tijdelijke dummy data voor de ledenlijst
-  const [members, setMembers] = useState([
-    { id: '1', name: 'Jens Peeters', role: 'admin', initial: 'J', color: COLORS.primaryOrange },
-    { id: '2', name: 'Sarah Smits', role: 'member', initial: 'S', color: COLORS.mascotGreen },
-    { id: '3', name: 'Mark de Vries', role: 'member', initial: 'M', color: COLORS.secondaryYellow },
-  ]);
+  // States voor het bewerken van de crew naam
+  const [localCrewName, setLocalCrewName] = useState(crewData?.name || "");
+  const [isEditingName, setIsEditingName] = useState(false);
 
-  const isAdmin = true; // Dit checken we later met de echte ingelogde user
+  const MAX_MEMBERS = 5; 
+  const isCrewFull = members.length >= MAX_MEMBERS;
+
+  const fetchRealMembers = async () => {
+    if (!crewData?.id) return;
+
+    try {
+      // 1. Haal de huidige ingelogde user op
+      const { data: { user } } = await supabase.auth.getUser();
+      let activeUid = null;
+      if (user) {
+        setCurrentUserId(user.id);
+        activeUid = user.id;
+      }
+
+      // 2. Haal de crewleden op (zonder te sorteren op created_at!)
+      const { data, error } = await supabase
+        .from('crew_members')
+        .select(`
+          user_id,
+          profiles ( display_name )
+        `)
+        .eq('crew_id', crewData.id);
+
+      if (error) console.error("Supabase Error:", error.message);
+
+      if (data && data.length > 0) {
+        // 💡 DE WATERDICHTE TRIGGER: De allereerste rij die ooit is aangemaakt is de Oprichter!
+        const absoluteLeaderId = data[0].user_id;
+        
+        // Als jij de oprichter bent, krijg je per direct admin rechten
+        if (activeUid === absoluteLeaderId) {
+          setIsLocalAdmin(true);
+        } else {
+          setIsLocalAdmin(false); // Zorg dat een 2e lid expliciet géén admin wordt
+        }
+
+        const formattedMembers = data.map(m => {
+          const displayName = m.profiles?.display_name || "Unknown Runner"; 
+          const isLeader = m.user_id === absoluteLeaderId; 
+
+          return {
+            id: m.user_id,
+            name: displayName,
+            role: isLeader ? 'Leader' : 'Runner', 
+            initial: displayName.charAt(0).toUpperCase(),
+            color: isLeader ? COLORS.primaryOrange : COLORS.mascotGreen
+          };
+        });
+        
+        setMembers(formattedMembers);
+      }
+    } catch (err) {
+      console.error("Fout bij ophalen leden:", err);
+    } finally {
+      setLoadingMembers(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchRealMembers();
+  }, [crewData]);
+
+  const askConfirmNameUpdate = () => {
+    if (localCrewName.trim() === "" || localCrewName.trim() === crewData?.name) {
+      setIsEditingName(false);
+      setLocalCrewName(crewData?.name || "");
+      return;
+    }
+
+    Alert.alert(
+      "Confirm Name Change",
+      `Are you sure you want to change the crew name to "${localCrewName}"?`,
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+          onPress: () => {
+            setIsEditingName(false);
+            setLocalCrewName(crewData?.name || "");
+          }
+        },
+        {
+          text: "Confirm",
+          onPress: handleUpdateCrewName
+        }
+      ]
+    );
+  };
+
+  const handleUpdateCrewName = async () => {
+    try {
+      await supabase
+        .from('crews')
+        .update({ name: localCrewName })
+        .eq('id', crewData.id);
+      
+      setIsEditingName(false);
+      refreshCrewData(); 
+    } catch (error) {
+      console.error("Fout bij updaten naam:", error.message);
+      Alert.alert("Error", "Could not update crew name.");
+    }
+  };
 
   const handleShare = async () => {
     try {
@@ -29,10 +136,32 @@ export default function CrewSettingsScreen({ navigation }) {
     }
   };
 
-  const removeMember = (id, name) => {
-    // Hier komt later de Supabase delete logica
-    console.log(`Verwijder ${name}`);
-    setMembers(members.filter(m => m.id !== id));
+  const removeMember = async (userId, name) => {
+    Alert.alert(
+      "Remove Member",
+      `Are you sure you want to remove ${name} from the crew?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Remove", 
+          style: "destructive",
+          onPress: async () => {
+            setMembers(members.filter(m => m.id !== userId));
+            try {
+              await supabase.from('crew_members').delete().eq('user_id', userId).eq('crew_id', crewData.id);
+              await supabase.from('crew_activity_log').insert({
+                crew_id: crewData.id,
+                event_type: 'member_left',
+                metadata: { ex_member_name: name }
+              });
+              fetchRealMembers(); 
+            } catch (error) {
+              console.error(error);
+            }
+          }
+        }
+      ]
+    );
   };
 
   return (
@@ -42,14 +171,37 @@ export default function CrewSettingsScreen({ navigation }) {
         <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={28} color={COLORS.textLight} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Crew Settings</Text>
-        <TouchableOpacity style={styles.iconBtn} onPress={handleShare}>
-          <Ionicons name="share-outline" size={28} color={COLORS.secondaryYellow} />
-        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Crew Management</Text>
+        <View style={{ width: 28 }} /> 
       </View>
 
-      {/* PUBLIC TOGGLE (Alleen voor Admins) */}
-      {isAdmin && (
+      {/* CREW NAAM EDIT SECTIE */}
+      <View style={styles.crewNameSection}>
+        {isEditingName && isLocalAdmin ? (
+          <View style={styles.editNameRow}>
+            <TextInput
+              style={styles.nameInput}
+              value={localCrewName}
+              onChangeText={setLocalCrewName}
+              autoFocus
+              returnKeyType="done"
+              onSubmitEditing={askConfirmNameUpdate}
+            />
+          </View>
+        ) : (
+          <View style={styles.displayNameRow}>
+            <Text style={styles.crewNameText}>{crewData?.name}</Text>
+            {isLocalAdmin && (
+              <TouchableOpacity onPress={() => setIsEditingName(true)} style={styles.editBtn}>
+                <Ionicons name="create-outline" size={22} color={COLORS.secondaryYellow} />
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+      </View>
+
+      {/* PUBLIC TOGGLE */}
+      {isLocalAdmin && !isCrewFull && (
         <View style={styles.settingCard}>
           <View style={styles.settingText}>
             <Text style={styles.settingTitle}>Open to Public</Text>
@@ -67,52 +219,82 @@ export default function CrewSettingsScreen({ navigation }) {
       {/* LEDENLIJST */}
       <View style={styles.listHeader}>
         <Text style={styles.listTitle}>Crew Members</Text>
-        <Text style={styles.memberCount}>{members.length}/5</Text>
+        <Text style={styles.memberCount}>{members.length}/{MAX_MEMBERS}</Text>
       </View>
 
-      <FlatList
-        data={members}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <View style={styles.memberItem}>
-            <View style={[styles.avatar, { backgroundColor: item.color }]}>
-              <Text style={styles.avatarText}>{item.initial}</Text>
+      {loadingMembers ? (
+        <ActivityIndicator color={COLORS.primaryOrange} style={{ marginTop: 20 }} />
+      ) : (
+        <FlatList
+          data={members}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <View style={styles.memberItem}>
+              <View style={[styles.avatar, { backgroundColor: item.color }]}>
+                <Text style={styles.avatarText}>{item.initial}</Text>
+              </View>
+              <View style={styles.memberInfo}>
+                <Text style={styles.memberName}>
+                  {item.name} {item.id === currentUserId && "(You)"}
+                </Text>
+                <Text style={styles.memberRole}>{item.role}</Text>
+              </View>
+              
+              {isLocalAdmin && item.id !== currentUserId && (
+                <TouchableOpacity style={styles.removeBtn} onPress={() => removeMember(item.id, item.name)}>
+                  <Ionicons name="person-remove-outline" size={20} color="#FF6B6B" />
+                </TouchableOpacity>
+              )}
             </View>
-            <View style={styles.memberInfo}>
-              <Text style={styles.memberName}>{item.name}</Text>
-              <Text style={styles.memberRole}>{item.role === 'admin' ? 'Leader' : 'Runner'}</Text>
-            </View>
-            
-            {/* Verwijder-knop (Alleen admin ziet dit, en je kan jezelf niet verwijderen) */}
-            {isAdmin && item.role !== 'admin' && (
-              <TouchableOpacity style={styles.removeBtn} onPress={() => removeMember(item.id, item.name)}>
-                <Ionicons name="person-remove-outline" size={20} color="#FF6B6B" />
-              </TouchableOpacity>
-            )}
-          </View>
-        )}
-      />
+          )}
+        />
+      )}
+
+      {/* INLINE INVITE BAR ONDERAAN */}
+      {!isCrewFull && crewData?.invite_code && (
+        <View style={styles.cleanCodeContainer}>
+          <Text style={styles.cleanCodeText}>
+            Invite code: <Text style={styles.codeHighlight}>{crewData.invite_code}</Text>
+          </Text>
+          
+          <TouchableOpacity style={styles.shareInlineBtn} onPress={handleShare} activeOpacity={0.6}>
+            <Ionicons name="share-social-outline" size={18} color={COLORS.secondaryYellow} />
+            <Text style={styles.shareInlineText}>Share</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 10, paddingBottom: 20 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 10, paddingBottom: 10 },
   iconBtn: { padding: 5 },
-  headerTitle: { color: COLORS.textLight, fontFamily: 'Baloo-Bold', fontSize: 24 },
-  settingCard: { backgroundColor: COLORS.cardBackground, marginHorizontal: 20, padding: 20, borderRadius: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 30 },
+  headerTitle: { color: COLORS.textMuted, fontFamily: 'Inter', fontWeight: '600', fontSize: 16, textTransform: 'uppercase', letterSpacing: 1 },
+  crewNameSection: { paddingHorizontal: 40, marginVertical: 10, alignItems: 'center', justifyContent: 'center', minHeight: 50 },
+  displayNameRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', width: '100%' },
+  crewNameText: { color: COLORS.textLight, fontFamily: 'Baloo-Bold', fontSize: 32, textTransform: 'capitalize', textAlign: 'center' },
+  editBtn: { position: 'absolute', right: -30, padding: 5 },
+  editNameRow: { flexDirection: 'row', width: '100%', alignItems: 'center', backgroundColor: COLORS.cardBackground, borderRadius: 16, paddingHorizontal: 15 },
+  nameInput: { flex: 1, color: COLORS.textLight, fontFamily: 'Baloo-Bold', fontSize: 24, paddingVertical: 10, textAlign: 'center' },
+  settingCard: { backgroundColor: COLORS.cardBackground, marginHorizontal: 20, padding: 20, borderRadius: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 25, marginTop: 10 },
   settingText: { flex: 1, paddingRight: 15 },
   settingTitle: { color: COLORS.textLight, fontFamily: 'Inter', fontWeight: 'bold', fontSize: 16, marginBottom: 4 },
   settingSub: { color: COLORS.textMuted, fontFamily: 'Inter', fontSize: 12, lineHeight: 18 },
-  listHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: 15 },
-  listTitle: { color: COLORS.textLight, fontFamily: 'Baloo-Bold', fontSize: 20 },
-  memberCount: { color: COLORS.textMuted, fontFamily: 'Inter', fontSize: 14, fontWeight: 'bold' },
+  listHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: 15, marginTop: 10 },
+  listTitle: { color: COLORS.textLight, fontFamily: 'Baloo-Bold', fontSize: 22 },
+  memberCount: { color: COLORS.textMuted, fontFamily: 'Inter', fontSize: 16, fontWeight: 'bold' },
   memberItem: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)' },
   avatar: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
   avatarText: { color: '#FFF', fontSize: 16, fontWeight: 'bold' },
   memberInfo: { flex: 1 },
   memberName: { color: COLORS.textLight, fontFamily: 'Inter', fontWeight: 'bold', fontSize: 16, marginBottom: 2 },
-  memberRole: { color: COLORS.textMuted, fontFamily: 'Inter', fontSize: 12, textTransform: 'capitalize' },
+  memberRole: { color: COLORS.textMuted, fontFamily: 'Inter', fontSize: 12 },
   removeBtn: { padding: 10, backgroundColor: 'rgba(255, 107, 107, 0.1)', borderRadius: 12 },
+  cleanCodeContainer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingVertical: 20, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.05)', marginTop: 'auto', marginBottom: 10 },
+  cleanCodeText: { color: COLORS.textMuted, fontFamily: 'Inter', fontSize: 16 },
+  codeHighlight: { color: COLORS.textLight, fontFamily: 'Baloo-Bold', fontSize: 18, letterSpacing: 1 },
+  shareInlineBtn: { flexDirection: 'row', alignItems: 'center', marginLeft: 15, backgroundColor: 'rgba(251, 191, 36, 0.1)', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(251, 191, 36, 0.2)' },
+  shareInlineText: { color: COLORS.secondaryYellow, fontFamily: 'Inter', fontWeight: 'bold', fontSize: 13, marginLeft: 5 }
 });

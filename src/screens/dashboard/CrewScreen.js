@@ -1,11 +1,12 @@
 // src/screens/main/CrewScreen.js
-import React, { useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator, Share } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "../../theme/colors";
 import * as WebBrowser from "expo-web-browser";
 import { useAuthRequest, makeRedirectUri } from "expo-auth-session";
-import { useUser } from '../../context/UserContext';
+import { useUser } from "../../context/UserContext";
+import { supabase } from "../../lib/supabase";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -17,14 +18,38 @@ const stravaEndpoints = {
 export default function CrewScreen({ navigation }) {
   // --- 1. USER CONTEXT (Data uit de cloud) ---
   const { crewData, loading, refreshCrewData } = useUser();
+  const [activities, setActivities] = useState([]);
 
-  // Ververs de data telkens als dit scherm in beeld komt
+  const fetchActivityLog = async () => {
+    if (!crewData?.id) return;
+
+    const { data, error } = await supabase
+      .from("crew_activity_log")
+      .select(
+        `
+      id,
+      event_type,
+      metadata,
+      created_at,
+      profiles ( display_name )
+    `,
+      )
+      .eq("crew_id", crewData.id)
+      .order("created_at", { ascending: false })
+      .limit(5); // Pak alleen de 5 nieuwste
+
+    if (data) setActivities(data);
+  };
+
+  // Voeg fetchActivityLog toe aan je bestaande focus-listener useEffect
   useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', () => {
+    const unsubscribe = navigation.addListener("focus", () => {
       refreshCrewData();
+      fetchActivityLog();
     });
+    fetchActivityLog();
     return unsubscribe;
-  }, [navigation, refreshCrewData]);
+  }, [navigation, crewData?.id]);
 
   // --- 2. STRAVA LOGICA ---
   const clientId = "239284"; // Jouw Strava Client ID
@@ -100,6 +125,45 @@ export default function CrewScreen({ navigation }) {
     }
   };
 
+  const formatRelativeTime = (dateString) => {
+  const now = new Date();
+  const past = new Date(dateString);
+  const diffMs = now - past;
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  return `${diffDays}d ago`;
+};
+
+const renderActivityText = (item) => {
+  const name = item.profiles?.display_name || "Someone";
+  
+  switch (item.event_type) {
+    case 'run_uploaded':
+      return (
+        <Text>
+          {name} <Text style={styles.activityAction}>completed a run of </Text>
+          {/* HIER ZIT DE MAGIE: Een specifieke stijl voor de afstand! */}
+          <Text style={styles.activityHighlight}>{item.metadata?.distance_km || 0}km</Text>
+        </Text>
+      );
+    case 'member_joined':
+      return <Text>{name} <Text style={styles.activityAction}>joined the Crew! 👋</Text></Text>;
+    case 'member_left':
+      return <Text>{item.metadata?.ex_member_name || 'A member'} <Text style={styles.activityAction}>left the Crew.</Text></Text>;
+    case 'streak_broken':
+      return <Text>💥 Oh no! <Text style={styles.activityAction}>The relay streak was broken.</Text></Text>;
+    case 'rest_day_used':
+      return <Text>🛡️ A Rest Day Token <Text style={styles.activityAction}>was deployed to save the streak!</Text></Text>;
+    default:
+      return <Text>Something happened in the crew.</Text>;
+  }
+};
+
   // --- 3. LOADING STATE ---
   // Toon een subtiel laadscherm als we nog écht geen data hebben
   if (loading && !crewData) {
@@ -113,15 +177,10 @@ export default function CrewScreen({ navigation }) {
   // --- 4. UI ---
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      
       {/* HEADER */}
       <View style={styles.header}>
         {/* NIEUW: De Settings knop zwevend in de rechterbovenhoek */}
-        <TouchableOpacity 
-          style={styles.settingsButtonRight} 
-          activeOpacity={0.7}
-          onPress={() => navigation.navigate("CrewSettings")}
-        >
+        <TouchableOpacity style={styles.settingsButtonRight} activeOpacity={0.7} onPress={() => navigation.navigate("CrewSettings")}>
           <Ionicons name="settings-outline" size={28} color={COLORS.textMuted} />
         </TouchableOpacity>
 
@@ -178,12 +237,7 @@ export default function CrewScreen({ navigation }) {
       </TouchableOpacity>
 
       {/* STRAVA SYNC BUTTON */}
-      <TouchableOpacity
-        style={[styles.stravaButton, !request ? { opacity: 0.5 } : {}]}
-        activeOpacity={0.8}
-        disabled={!request}
-        onPress={() => promptAsync()}
-      >
+      <TouchableOpacity style={[styles.stravaButton, !request ? { opacity: 0.5 } : {}]} activeOpacity={0.8} disabled={!request} onPress={() => promptAsync()}>
         <Ionicons name="fitness" size={24} color="#FFF" style={{ marginRight: 10 }} />
         <Text style={styles.stravaButtonText}>Sync run from Strava</Text>
       </TouchableOpacity>
@@ -197,31 +251,37 @@ export default function CrewScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
-        {/* Activity Item 1 */}
-        <View style={styles.activityItem}>
-          <View style={[styles.smallAvatar, { backgroundColor: "#9b59b6" }]}>
-            <Text style={styles.smallAvatarText}>M</Text>
-          </View>
-          <View style={styles.activityDetails}>
-            <Text style={styles.activityUser}>
-              Mark <Text style={styles.activityAction}>completed a run</Text>
-            </Text>
-            <Text style={styles.activityMeta}>5.2 km • 32 mins • 2 hours ago</Text>
-          </View>
-        </View>
+        {activities.length === 0 ? (
+          <Text style={{ color: COLORS.textMuted, fontFamily: "Inter", fontStyle: "italic" }}>
+            No recent activity yet. Go for a run!
+          </Text>
+        ) : (
+          activities.map((item) => {
+            // Geef elk type event een eigen kleur avatar
+            let avatarColor = COLORS.primaryOrange;
+            let iconName = "footsteps";
+            if (item.event_type === 'member_joined') { avatarColor = COLORS.mascotGreen; iconName = "person-add"; }
+            if (item.event_type === 'member_left') { avatarColor = "#e74c3c"; iconName = "person-remove"; }
+            if (item.event_type === 'rest_day_used') { avatarColor = COLORS.secondaryYellow; iconName = "shield"; }
+            if (item.event_type === 'streak_broken') { avatarColor = "#7f8c8d"; iconName = "flash-off"; }
 
-        {/* Activity Item 2 */}
-        <View style={styles.activityItem}>
-          <View style={[styles.smallAvatar, { backgroundColor: COLORS.primaryOrange }]}>
-            <Text style={styles.smallAvatarText}>J</Text>
-          </View>
-          <View style={styles.activityDetails}>
-            <Text style={styles.activityUser}>
-              You <Text style={styles.activityAction}>completed a run</Text>
-            </Text>
-            <Text style={styles.activityMeta}>3.1 km • 18 mins • Yesterday</Text>
-          </View>
-        </View>
+            return (
+              <View key={item.id} style={styles.activityItem}>
+                <View style={[styles.smallAvatar, { backgroundColor: avatarColor }]}>
+                  <Ionicons name={iconName} size={16} color="#FFF" />
+                </View>
+                <View style={styles.activityDetails}>
+                  <Text style={styles.activityUser}>
+                    {renderActivityText(item)}
+                  </Text>
+                  <Text style={styles.activityMeta}>
+                    {formatRelativeTime(item.created_at)}
+                  </Text>
+                </View>
+              </View>
+            );
+          })
+        )}
       </View>
     </ScrollView>
   );
@@ -246,11 +306,11 @@ const styles = StyleSheet.create({
     marginTop: 50,
     marginBottom: 30,
     alignItems: "center",
-    position: 'relative',
-    width: '100%',
+    position: "relative",
+    width: "100%",
   },
   settingsButtonRight: {
-    position: 'absolute',
+    position: "absolute",
     top: 0,
     right: 0,
     padding: 5,
@@ -284,7 +344,7 @@ const styles = StyleSheet.create({
   },
   streakBanner: {
     flexDirection: "row",
-    backgroundColor: "rgba(231, 84, 56, 0.1)", 
+    backgroundColor: "rgba(231, 84, 56, 0.1)",
     borderWidth: 1,
     borderColor: "rgba(231, 84, 56, 0.3)",
     borderRadius: 16,
@@ -416,7 +476,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 15,
-    backgroundColor: "rgba(38, 42, 62, 0.5)", 
+    backgroundColor: "rgba(38, 42, 62, 0.5)",
     padding: 12,
     borderRadius: 12,
   },
@@ -452,5 +512,9 @@ const styles = StyleSheet.create({
     fontFamily: "Inter",
     fontSize: 12,
   },
-
+  activityHighlight: {
+    color: COLORS.secondaryYellow,
+    fontFamily: "Baloo-Bold",
+    fontSize: 16,
+  },
 });

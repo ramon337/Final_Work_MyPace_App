@@ -115,17 +115,17 @@ export default function AccountSetupScreen({ navigation }) {
         const randomCode = Array.from({ length: 6 })
           .map(() => chars[Math.floor(Math.random() * chars.length)])
           .join("");
-          
+
         const { data: crewData } = await supabase
           .from("crews")
           .insert([{ name: crewName, invite_code: randomCode }])
           .select()
           .single();
-          
+
         if (crewData) {
           // 1. Maak de gebruiker lid van de nieuwe crew
           await supabase.from("crew_members").insert([{ user_id: userId, crew_id: crewData.id }]);
-          
+
           // 2. 🚀 NIEUW: Koppel direct de eerste gezamenlijke Quest aan de Crew!
           await supabase.from("crew_quests").insert([
             {
@@ -134,15 +134,20 @@ export default function AccountSetupScreen({ navigation }) {
               subtitle: "Run the legendary highway across the US!",
               target_amount: 3940, // Bijvoorbeeld 3940 minuten
               current_progress: 0,
-              type: "minutes"
-            }
+              type: "minutes",
+            },
           ]);
-          
+
           console.log("Crew gemaakt, lid geworden en Quest gekoppeld!");
         }
       } else if (selectedCrewAction === "invite" && verifiedCrewId !== null) {
         // We gebruiken hier het verifiedCrewId dat we in stap 1 al hadden gevonden!
         await supabase.from("crew_members").insert([{ user_id: userId, crew_id: verifiedCrewId }]);
+        await supabase.from("crew_activity_log").insert({
+          crew_id: verifiedCrewId,
+          user_id: userId,
+          event_type: "member_joined",
+        });
         console.log("Succesvol aangesloten bij crew via code!");
       }
 

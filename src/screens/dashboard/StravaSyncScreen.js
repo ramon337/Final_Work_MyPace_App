@@ -1,15 +1,15 @@
 // src/screens/main/StravaSyncScreen.js
-import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { COLORS } from '../../theme/colors';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { supabase } from '../../lib/supabase';
+import React, { useState, useEffect } from "react";
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { COLORS } from "../../theme/colors";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { supabase } from "../../lib/supabase";
 
 export default function StravaSyncScreen({ navigation, route }) {
   const { runs = [] } = route.params || {};
   const [selectedRunId, setSelectedRunId] = useState(null);
-  
+
   // State voor de database check
   const [syncedIds, setSyncedIds] = useState([]);
   const [isCheckingDb, setIsCheckingDb] = useState(true);
@@ -17,9 +17,9 @@ export default function StravaSyncScreen({ navigation, route }) {
   // 1. Haal op welke runs al in de database staan
   useEffect(() => {
     const fetchSyncedIds = async () => {
-      const { data } = await supabase.from('runs').select('strava_activity_id');
+      const { data } = await supabase.from("runs").select("strava_activity_id");
       if (data) {
-        setSyncedIds(data.map(r => r.strava_activity_id));
+        setSyncedIds(data.map((r) => r.strava_activity_id));
       }
       setIsCheckingDb(false); // We zijn klaar met checken!
     };
@@ -27,24 +27,22 @@ export default function StravaSyncScreen({ navigation, route }) {
   }, []);
 
   // 2. Filter de runs (Dit is nu de ENIGE keer dat we availableRuns aanmaken)
-  const availableRuns = runs.filter(run => !syncedIds.includes(run.id));
+  const availableRuns = runs.filter((run) => !syncedIds.includes(run.id));
 
   // 3. De Sync Functie
   const handleSync = async () => {
-    const runToSync = availableRuns.find(r => r.id === selectedRunId);
+    const runToSync = availableRuns.find((r) => r.id === selectedRunId);
     if (!runToSync) return;
 
     console.log("We gaan deze run uploaden naar de database:", runToSync.name);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) throw new Error("Je bent niet ingelogd!");
 
-      const { data: crewMember, error: crewError } = await supabase
-        .from('crew_members')
-        .select('crew_id')
-        .eq('user_id', user.id)
-        .single();
+      const { data: crewMember, error: crewError } = await supabase.from("crew_members").select("crew_id").eq("user_id", user.id).single();
 
       if (crewError || !crewMember) {
         throw new Error("Je zit nog niet in een Crew!");
@@ -53,49 +51,47 @@ export default function StravaSyncScreen({ navigation, route }) {
       const distanceKm = (runToSync.distance / 1000).toFixed(2);
       const timeMins = Math.round(runToSync.moving_time / 60);
 
-      const { error: runInsertError } = await supabase
-        .from('runs')
-        .insert({
-          user_id: user.id,
-          crew_id: crewMember.crew_id,
-          strava_activity_id: runToSync.id,
-          distance_km: parseFloat(distanceKm),
-          duration_minutes: timeMins,
-          run_date: runToSync.start_date
-        });
+      const { error: runInsertError } = await supabase.from("runs").insert({
+        user_id: user.id,
+        crew_id: crewMember.crew_id,
+        strava_activity_id: runToSync.id,
+        distance_km: parseFloat(distanceKm),
+        duration_minutes: timeMins,
+        run_date: runToSync.start_date,
+      });
 
       if (runInsertError) throw runInsertError;
 
-      const { data: crew } = await supabase
-        .from('crews')
-        .select('total_minutes')
-        .eq('id', crewMember.crew_id)
-        .single();
+      const { data: crew } = await supabase.from("crews").select("total_minutes").eq("id", crewMember.crew_id).single();
 
       const newTotal = (crew.total_minutes || 0) + timeMins;
 
- const { data: activeQuests } = await supabase
-        .from('crew_quests')
-        .select('id, current_progress')
-        .eq('crew_id', crewMember.crew_id)
-        .eq('type', 'minutes'); // We pakken alleen de minuten-quests
+      const { data: activeQuests } = await supabase.from("crew_quests").select("id, current_progress").eq("crew_id", crewMember.crew_id).eq("type", "minutes"); // We pakken alleen de minuten-quests
 
       if (activeQuests) {
         // Loop door de actieve quests heen (vaak is het er nu 1, maar handig voor later)
         for (const quest of activeQuests) {
           const questNewProgress = (quest.current_progress || 0) + timeMins;
-          
-          await supabase
-            .from('crew_quests')
-            .update({ current_progress: questNewProgress })
-            .eq('id', quest.id);
+
+          await supabase.from("crew_quests").update({ current_progress: questNewProgress }).eq("id", quest.id);
         }
         console.log(`🚀 Quest voortgang succesvol verhoogd met ${timeMins} minuten!`);
       }
+      // In StravaSyncScreen.js -> handleSync() net voor navigation.goBack()
+
+      await supabase.from("crew_activity_log").insert({
+        crew_id: crewMember.crew_id,
+        user_id: user.id,
+        event_type: "run_uploaded",
+        metadata: {
+          run_name: runToSync.name,
+          distance_km: parseFloat(distanceKm),
+          duration_minutes: timeMins,
+        },
+      });
 
       console.log(`🎉 Succes! ${timeMins} minuten toegevoegd aan de Crew!`);
       navigation.goBack();
-
     } catch (error) {
       console.error("Fout bij syncen:", error.message);
     }
@@ -130,21 +126,15 @@ export default function StravaSyncScreen({ navigation, route }) {
               const isSelected = selectedRunId === run.id;
               const distanceKm = (run.distance / 1000).toFixed(2);
               const timeMins = Math.round(run.moving_time / 60);
-              
-              const runDate = new Date(run.start_date_local).toLocaleDateString('nl-NL', {
-                weekday: 'short', day: 'numeric', month: 'short'
+
+              const runDate = new Date(run.start_date_local).toLocaleDateString("nl-NL", {
+                weekday: "short",
+                day: "numeric",
+                month: "short",
               });
 
               return (
-                <TouchableOpacity 
-                  key={run.id}
-                  activeOpacity={0.9}
-                  onPress={() => setSelectedRunId(run.id)}
-                  style={[
-                    styles.runCard,
-                    isSelected ? styles.runCardSelected : null
-                  ]}
-                >
+                <TouchableOpacity key={run.id} activeOpacity={0.9} onPress={() => setSelectedRunId(run.id)} style={[styles.runCard, isSelected ? styles.runCardSelected : null]}>
                   {isSelected ? (
                     <View style={styles.checkmarkBadge}>
                       <Ionicons name="checkmark" size={16} color="#FFF" />
@@ -152,11 +142,15 @@ export default function StravaSyncScreen({ navigation, route }) {
                   ) : null}
 
                   <View style={styles.runInfo}>
-                    <Text style={styles.runDate}>{runDate} • {run.type}</Text>
+                    <Text style={styles.runDate}>
+                      {runDate} • {run.type}
+                    </Text>
                     <Text style={styles.runName}>{run.name}</Text>
-                    
+
                     {run.description ? (
-                      <Text style={styles.runDesc} numberOfLines={2}>{run.description}</Text>
+                      <Text style={styles.runDesc} numberOfLines={2}>
+                        {run.description}
+                      </Text>
                     ) : null}
 
                     <View style={styles.statsRow}>
@@ -195,24 +189,49 @@ export default function StravaSyncScreen({ navigation, route }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 10 },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingTop: 20, paddingBottom: 10 },
   backButton: { padding: 5 },
-  headerTitle: { color: COLORS.textLight, fontFamily: 'Baloo-Bold', fontSize: 24 },
+  headerTitle: { color: COLORS.textLight, fontFamily: "Baloo-Bold", fontSize: 24 },
   content: { padding: 20, paddingBottom: 100 },
-  runCard: { backgroundColor: COLORS.cardBackground, borderRadius: 16, padding: 20, marginBottom: 15, borderWidth: 2, borderColor: 'transparent', position: 'relative' },
-  runCardSelected: { borderColor: COLORS.primaryOrange, backgroundColor: 'rgba(231, 84, 56, 0.05)' },
-  checkmarkBadge: { position: 'absolute', top: -10, right: -10, backgroundColor: COLORS.primaryOrange, width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center', borderWidth: 3, borderColor: COLORS.background, zIndex: 10 },
-  runDate: { color: COLORS.textMuted, fontFamily: 'Inter', fontSize: 12, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 },
-  runName: { color: COLORS.textLight, fontFamily: 'Baloo-Bold', fontSize: 22, marginBottom: 6 },
-  runDesc: { color: '#cbd5e1', fontFamily: 'Inter', fontSize: 14, marginBottom: 15, fontStyle: 'italic' },
-  statsRow: { flexDirection: 'row', marginTop: 15, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', paddingTop: 15 },
-  statBox: { flex: 1, alignItems: 'center' },
-  statValue: { color: COLORS.textLight, fontFamily: 'Baloo-Bold', fontSize: 24 },
-  statLabel: { color: COLORS.textMuted, fontFamily: 'Inter', fontSize: 12 },
-  footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 20, paddingBottom: 30, backgroundColor: COLORS.background, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.05)' },
-  continueButton: { backgroundColor: COLORS.primaryOrange, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingVertical: 18, borderRadius: 16, shadowColor: COLORS.primaryOrange, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 8, elevation: 5 },
-  continueButtonText: { color: '#FFF', fontFamily: 'Inter', fontWeight: 'bold', fontSize: 18 },
-  emptyState: { alignItems: 'center', justifyContent: 'center', marginTop: 60 },
-  emptyText: { color: COLORS.textLight, fontFamily: 'Baloo-Bold', fontSize: 24, marginTop: 20, marginBottom: 10 },
-  emptySubtext: { color: COLORS.textMuted, fontFamily: 'Inter', textAlign: 'center', fontSize: 16 }
+  runCard: { backgroundColor: COLORS.cardBackground, borderRadius: 16, padding: 20, marginBottom: 15, borderWidth: 2, borderColor: "transparent", position: "relative" },
+  runCardSelected: { borderColor: COLORS.primaryOrange, backgroundColor: "rgba(231, 84, 56, 0.05)" },
+  checkmarkBadge: {
+    position: "absolute",
+    top: -10,
+    right: -10,
+    backgroundColor: COLORS.primaryOrange,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 3,
+    borderColor: COLORS.background,
+    zIndex: 10,
+  },
+  runDate: { color: COLORS.textMuted, fontFamily: "Inter", fontSize: 12, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 },
+  runName: { color: COLORS.textLight, fontFamily: "Baloo-Bold", fontSize: 22, marginBottom: 6 },
+  runDesc: { color: "#cbd5e1", fontFamily: "Inter", fontSize: 14, marginBottom: 15, fontStyle: "italic" },
+  statsRow: { flexDirection: "row", marginTop: 15, borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.1)", paddingTop: 15 },
+  statBox: { flex: 1, alignItems: "center" },
+  statValue: { color: COLORS.textLight, fontFamily: "Baloo-Bold", fontSize: 24 },
+  statLabel: { color: COLORS.textMuted, fontFamily: "Inter", fontSize: 12 },
+  footer: { position: "absolute", bottom: 0, left: 0, right: 0, padding: 20, paddingBottom: 30, backgroundColor: COLORS.background, borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.05)" },
+  continueButton: {
+    backgroundColor: COLORS.primaryOrange,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 18,
+    borderRadius: 16,
+    shadowColor: COLORS.primaryOrange,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  continueButtonText: { color: "#FFF", fontFamily: "Inter", fontWeight: "bold", fontSize: 18 },
+  emptyState: { alignItems: "center", justifyContent: "center", marginTop: 60 },
+  emptyText: { color: COLORS.textLight, fontFamily: "Baloo-Bold", fontSize: 24, marginTop: 20, marginBottom: 10 },
+  emptySubtext: { color: COLORS.textMuted, fontFamily: "Inter", textAlign: "center", fontSize: 16 },
 });
