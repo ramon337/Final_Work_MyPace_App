@@ -1,96 +1,360 @@
-// src/screens/dashboard/YouScreen.js
-import React from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, Alert } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { StyleSheet, Text, View, TouchableOpacity, Image, ActivityIndicator, Alert, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { supabase } from '../../lib/supabase';
+import * as ImagePicker from 'expo-image-picker';
 import { COLORS } from '../../theme/colors';
+import { supabase } from '../../lib/supabase';
 
-export default function YouScreen() {
+export default function ProfileScreen() {
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState(null);
 
-  const handleLogout = async () => {
-    console.log("Bezig met uitloggen...");
-    const { error } = await supabase.auth.signOut();
-    
-    if (error) {
-      console.error("Fout bij uitloggen:", error);
-      Alert.alert("Oeps!", "Er ging iets mis bij het uitloggen.");
+  const [profile, setProfile] = useState({
+    displayName: "Runner",
+    avatarUrl: null,
+    weeklyGoal: 2, // Lokale camelCase voor React
+    minutesContributed: 0,
+    totalRuns: 0,
+    highestStreak: 0,
+    crewName: "No Crew Yet"
+  });
+
+  const fetchProfileData = async () => {
+    try {
+      setLoading(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+      setCurrentUserId(user.id);
+
+      // 1. Haal de onboarding data op (let op de underscore uit de DB!)
+      const { data: profData, error: profError } = await supabase
+        .from('profiles')
+        .select('display_name, avatar_url, weekly_goal')
+        .eq('id', user.id)
+        .single();
+
+      if (profError) throw profError;
+
+      // 2. Haal de crew-naam op
+      const { data: crewMemberData } = await supabase
+        .from('crew_members')
+        .select(`
+          crews ( name, id )
+        `)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      const crewName = crewMemberData?.crews?.name || "No Crew Joined";
+      const crewId = crewMemberData?.crews?.id;
+
+      // 3. Live statistieken berekenen uit de logs
+      let liveMinutes = 0;
+      let liveRuns = 0;
+
+      if (crewId) {
+        const { data: userLogs } = await supabase
+          .from('crew_activity_log')
+          .select('metadata')
+          .eq('crew_id', crewId)
+          .eq('user_id', user.id)
+          .eq('event_type', 'run_uploaded');
+
+        if (userLogs) {
+          liveRuns = userLogs.length;
+          liveMinutes = userLogs.reduce((total, log) => total + (log.metadata?.duration_minutes || 0), 0);
+        }
+      }
+
+      if (profData) {
+        setProfile({
+          displayName: profData.display_name || "Unknown Runner",
+          avatarUrl: profData.avatar_url || null,
+          // 💡 DE FIX: We mappen de database 'weekly_goal' (met underscore) 
+          // nu expliciet naar onze lokale 'weeklyGoal' state!
+          weeklyGoal: profData.weekly_goal || 2, 
+          minutesContributed: liveMinutes,
+          totalRuns: liveRuns,
+          highestStreak: liveRuns > 0 ? 1 : 0,
+          crewName: crewName
+        });
+      }
+    } catch (error) {
+      console.error("Error fetching profile:", error.message);
+    } finally {
+      setLoading(false);
     }
-    // Let op: we hoeven GEEN navigation.navigate te doen!
-    // App.js ziet dat de sessie weg is en toont direct de Welcome screen.
   };
+
+  useEffect(() => {
+    fetchProfileData();
+  }, []);
+
+// 🚀 WATERDICHTE PROFIELFOTO UPLOAD MET BASE64 CONVERSIE
+  // 🚀 PROFIELFOTO UPLOAD VIA FORMDATA (Zonder externe modules)
+  const pickAndUploadImage = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert("Permission Denied", "We need access to your photos to change your avatar.");
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.4,
+      });
+
+      if (result.canceled || !result.assets || result.assets.length === 0) return;
+
+      setUploading(true);
+      const pickedImage = result.assets[0];
+      
+      // Maak een handig FormData object aan dat Expo vloeiend kan versturen
+      const formData = new FormData();
+      const fileExt = pickedImage.uri.split('.').pop() || 'jpg';
+      const fileName = `${currentUserId}-${Date.now()}.${fileExt}`;
+
+      formData.append('files', {
+        uri: pickedImage.uri,
+        name: fileName,
+        type: `image/${fileExt}`,
+      });
+
+      // Upload rechtstreeks naar de Supabase Storage API met de Formdata
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(fileName, formData, {
+          contentType: `image/${fileExt}`,
+          upsert: true
+        });
+
+      if (uploadError) throw uploadError;
+
+      // Genereer de publieke URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(fileName);
+
+      // Update de profiles tabel in de database
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ avatar_url: publicUrl })
+        .eq('id', currentUserId);
+
+      if (updateError) throw updateError;
+
+      // Update de UI direct live
+      setProfile(prev => ({ ...prev, avatarUrl: publicUrl }));
+      Alert.alert("Success", "Profile picture updated!");
+
+    } catch (error) {
+      console.error("Upload error details:", error.message);
+      Alert.alert("Upload Error", error.message || "Could not upload image.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // 🚀 WEEKLY GOAL ALERT
+  const handleEditGoal = () => {
+    Alert.alert(
+      "Set Weekly Goal",
+      "How many runs do you want to achieve per week?",
+      [
+        { text: "1 Run", onPress: () => updateGoalInDB(1) },
+        { text: "2 Runs", onPress: () => updateGoalInDB(2) },
+        { text: "3 Runs", onPress: () => updateGoalInDB(3) },
+        { text: "Cancel", style: "cancel" }
+      ]
+    );
+  };
+
+  const updateGoalInDB = async (newGoal) => {
+    try {
+      // 💡 DE FIX: We updaten de database kolom 'weekly_goal' (met underscore)
+      const { error } = await supabase
+        .from('profiles')
+        .update({ weekly_goal: newGoal })
+        .eq('id', currentUserId);
+
+      if (error) throw error;
+
+      // En zetten hem daarna in de lokale camelCase state
+      setProfile(prev => ({ ...prev, weeklyGoal: newGoal }));
+      Alert.alert("Success", "Weekly goal updated!");
+    } catch (error) {
+      console.error("Fout bij updaten goal:", error);
+      Alert.alert("Error", "Could not save your goal to the server.");
+    }
+  };
+
+  const handleLogout = () => {
+    Alert.alert(
+      "Log Out",
+      "Are you sure you want to log out of MyPace?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Log Out", style: "destructive", onPress: () => supabase.auth.signOut() }
+      ]
+    );
+  };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.center]}>
+        <ActivityIndicator size="large" color={COLORS.primaryOrange} />
+      </View>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Profile</Text>
-      </View>
+      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+        
+        {/* AVATAR + NAAM */}
+        <View style={styles.avatarSection}>
+          <TouchableOpacity onPress={pickAndUploadImage} disabled={uploading} style={styles.avatarWrapper}>
+            {profile.avatarUrl ? (
+              <Image source={{ uri: profile.avatarUrl }} style={styles.avatarImage} />
+            ) : (
+              <View style={styles.avatarFallback}>
+                <Text style={styles.avatarFallbackText}>{profile.displayName.charAt(0).toUpperCase()}</Text>
+              </View>
+            )}
+            <View style={styles.editCameraBadge}>
+              {uploading ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <Ionicons name="camera" size={14} color="#FFF" />
+              )}
+            </View>
+          </TouchableOpacity>
 
-      <View style={styles.content}>
-        <View style={styles.placeholderCard}>
-          <Ionicons name="person-circle-outline" size={80} color={COLORS.textMuted} />
-          <Text style={styles.placeholderText}>Jouw profielgegevens komen hier...</Text>
+          <Text style={styles.profileName}>{profile.displayName}</Text>
+          
+          <View style={styles.crewTag}>
+            <Ionicons name="people" size={14} color={COLORS.primaryOrange} style={{ marginRight: 6 }} />
+            <Text style={styles.crewTagText}>Member of <Text style={styles.crewHighlight}>{profile.crewName}</Text></Text>
+          </View>
         </View>
-      </View>
 
-      {/* LOGOUT BUTTON ONDERAAN */}
-      <View style={styles.footer}>
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <Ionicons name="log-out-outline" size={20} color="#FFF" />
+        {/* WEEKLY GOAL CARD */}
+        <View style={styles.card}>
+          <View style={styles.cardHeaderRow}>
+            <View style={styles.titleWithIcon}>
+              <Ionicons name="flag-outline" size={20} color={COLORS.secondaryYellow} />
+              <Text style={styles.cardTitle}>Weekly Goal</Text>
+            </View>
+            <TouchableOpacity style={styles.editGoalBtn} onPress={handleEditGoal}>
+              <Ionicons name="create-outline" size={18} color={COLORS.secondaryYellow} />
+              <Text style={styles.editGoalText}>Edit</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.goalText}>
+            {profile.weeklyGoal} {profile.weeklyGoal === 1 ? 'run' : 'runs'} a week
+          </Text>
+        </View>
+
+        {/* THIS WEEK PLANNING */}
+        <View style={styles.card}>
+          <View style={styles.titleWithIcon}>
+            <Ionicons name="calendar-outline" size={20} color={COLORS.mascotGreen} />
+            <Text style={styles.cardTitle}>This Week</Text>
+          </View>
+          <Text style={styles.placeholderText}>
+            Days will be schedulable as soon as the Streak & Baton engine goes live! ⚡️
+          </Text>
+        </View>
+
+        {/* STATS ROOSTER */}
+        <Text style={styles.sectionTitle}>Your Stats</Text>
+        <View style={styles.statsGrid}>
+          <View style={styles.statBox}>
+            <Text style={styles.statValue}>{profile.minutesContributed}m</Text>
+            <Text style={styles.statLabel}>Contributed</Text>
+          </View>
+          <View style={styles.statBox}>
+            <Text style={styles.statValue}>{profile.totalRuns}</Text>
+            <Text style={styles.statLabel}>Total Runs</Text>
+          </View>
+          <View style={styles.statBox}>
+            <Text style={styles.statValue}>🔥 {profile.highestStreak}</Text>
+            <Text style={styles.statLabel}>Highest Streak</Text>
+          </View>
+        </View>
+
+        {/* ACHIEVEMENTS */}
+        <Text style={styles.sectionTitle}>Achievements</Text>
+        <View style={styles.badgeRow}>
+          <View style={styles.badgeItem}>
+            <View style={[styles.badgeIconCircle, { backgroundColor: 'rgba(251, 191, 36, 0.1)' }]}>
+              <Ionicons name="trophy" size={24} color={COLORS.secondaryYellow} />
+            </View>
+            <Text style={styles.badgeLabel}>Founder</Text>
+          </View>
+          <View style={styles.badgeItem}>
+            <View style={[styles.badgeIconCircle, { backgroundColor: 'rgba(92, 190, 136, 0.1)' }]}>
+              <Ionicons name="flame" size={24} color={COLORS.mascotGreen} />
+            </View>
+            <Text style={styles.badgeLabel}>First Run</Text>
+          </View>
+          <View style={[styles.badgeItem, { opacity: 0.4 }]}>
+            <View style={[styles.badgeIconCircle, { backgroundColor: '#3a3f58' }]}>
+              <Ionicons name="lock-closed" size={24} color={COLORS.textMuted} />
+            </View>
+            <Text style={styles.badgeLabel}>10 Streak</Text>
+          </View>
+        </View>
+
+        {/* LOG OUT BUTTON */}
+        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
+          <Ionicons name="log-out-outline" size={20} color="#FF6B6B" />
           <Text style={styles.logoutText}>Log Out</Text>
         </TouchableOpacity>
-      </View>
+
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  header: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 10,
-  },
-  headerTitle: {
-    color: COLORS.textLight,
-    fontFamily: 'Baloo-Bold',
-    fontSize: 32,
-  },
-  content: {
-    flex: 1,
-    padding: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  placeholderCard: {
-    alignItems: 'center',
-    opacity: 0.5,
-  },
-  placeholderText: {
-    color: COLORS.textMuted,
-    fontFamily: 'Inter',
-    marginTop: 10,
-  },
-  footer: {
-    padding: 20,
-    paddingBottom: 30,
-  },
-  logoutButton: {
-    backgroundColor: '#FF6B6B', // Mooie rode kleur voor destructieve acties
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 16,
-    borderRadius: 16,
-  },
-  logoutText: {
-    color: '#FFF',
-    fontFamily: 'Inter',
-    fontWeight: 'bold',
-    fontSize: 16,
-    marginLeft: 8,
-  },
+  container: { flex: 1, backgroundColor: COLORS.background },
+  center: { justifyContent: 'center', alignItems: 'center' },
+  scrollContainer: { paddingHorizontal: 20, paddingBottom: 40 },
+  avatarSection: { alignItems: 'center', marginTop: 20, marginBottom: 25 },
+  avatarWrapper: { width: 100, height: 100, borderRadius: 50, position: 'relative', marginBottom: 15 },
+  avatarImage: { width: 100, height: 100, borderRadius: 50 },
+  avatarFallback: { width: 100, height: 100, borderRadius: 50, backgroundColor: COLORS.primaryOrange, justifyContent: 'center', alignItems: 'center' },
+  avatarFallbackText: { color: '#FFF', fontFamily: 'Baloo-Bold', fontSize: 42, marginTop: 5 },
+  editCameraBadge: { position: 'absolute', bottom: 0, right: 0, backgroundColor: COLORS.cardBackground, width: 30, height: 30, borderRadius: 15, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: COLORS.background },
+  profileName: { color: COLORS.textLight, fontFamily: 'Baloo-Bold', fontSize: 28, textTransform: 'capitalize', marginBottom: 4 },
+  crewTag: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.03)', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
+  crewTagText: { color: COLORS.textMuted, fontFamily: 'Inter', fontSize: 13 },
+  crewHighlight: { color: COLORS.textLight, fontWeight: '600' },
+  card: { backgroundColor: COLORS.cardBackground, borderRadius: 16, padding: 18, marginBottom: 15 },
+  cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  titleWithIcon: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
+  cardTitle: { color: COLORS.textMuted, fontFamily: 'Inter', fontWeight: 'bold', fontSize: 14, textTransform: 'uppercase', letterSpacing: 0.5, marginLeft: 8 },
+  editGoalBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(251, 191, 36, 0.1)', paddingVertical: 4, paddingHorizontal: 8, borderRadius: 8 },
+  editGoalText: { color: COLORS.secondaryYellow, fontFamily: 'Inter', fontWeight: 'bold', fontSize: 12, marginLeft: 4 },
+  goalText: { color: COLORS.textLight, fontFamily: 'Baloo-Bold', fontSize: 22 },
+  placeholderText: { color: COLORS.textMuted, fontFamily: 'Inter', fontSize: 14, lineHeight: 20 },
+  sectionTitle: { color: COLORS.textLight, fontFamily: 'Baloo-Bold', fontSize: 20, marginTop: 15, marginBottom: 12 },
+  statsGrid: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
+  statBox: { backgroundColor: COLORS.cardBackground, flex: 1, marginRight: 10, borderRadius: 16, padding: 15, alignItems: 'center', justifyContent: 'center' },
+  statValue: { color: COLORS.textLight, fontFamily: 'Baloo-Bold', fontSize: 20, marginBottom: 2 },
+  statLabel: { color: COLORS.textMuted, fontFamily: 'Inter', fontSize: 11, textAlign: 'center' },
+  badgeRow: { flexDirection: 'row', backgroundColor: COLORS.cardBackground, borderRadius: 16, padding: 15, justifyContent: 'space-around' },
+  badgeItem: { alignItems: 'center', width: 70 },
+  badgeIconCircle: { width: 50, height: 50, borderRadius: 25, justifyContent: 'center', alignItems: 'center', marginBottom: 6 },
+  badgeLabel: { color: COLORS.textLight, fontFamily: 'Inter', fontSize: 12, fontWeight: '500', textAlign: 'center' },
+  logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 35, paddingVertical: 12, borderRadius: 12, backgroundColor: 'rgba(255, 107, 107, 0.08)', borderWidth: 1, borderColor: 'rgba(255, 107, 107, 0.15)' },
+  logoutText: { color: '#FF6B6B', fontFamily: 'Inter', fontWeight: 'bold', fontSize: 15, marginLeft: 8 }
 });
