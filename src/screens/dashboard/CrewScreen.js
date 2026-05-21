@@ -338,67 +338,86 @@ export default function CrewScreen({ navigation }) {
 
             <ScrollView style={styles.weekList} contentContainerStyle={{ paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
               {weekAssignments.map((day, index) => {
-                const crewCreatedAtStr = crewData?.created_at ? crewData.created_at.split("T")[0] : "1970-01-01";
-                if (day.assignment_date < crewCreatedAtStr) return null;
+                // Tijdzone-veilige omzetting van de oprichtingsdatum
+                const getLocalYYYYMMDD = (isoString) => {
+                  if (!isoString) return "1970-01-01";
+                  const d = new Date(isoString);
+                  const offset = d.getTimezoneOffset() * 60000;
+                  return new Date(d - offset).toISOString().split("T")[0];
+                };
+
+                const crewCreatedAtStr = getLocalYYYYMMDD(crewData?.created_at);
+                const isBeforeCreation = day.assignment_date < crewCreatedAtStr;
                 const dayDate = new Date(day.assignment_date);
                 const dayName = dayDate.toLocaleDateString("en-US", { weekday: "short" });
 
-                // Tijdzone-veilige check voor 'vandaag'
                 const offset = new Date().getTimezoneOffset() * 60000;
                 const todayStr = new Date(new Date() - offset).toISOString().split("T")[0];
                 const isToday = day.assignment_date === todayStr;
 
-                // Omdat de array EXACT deze en volgende week is, is index 0 altijd maandag van deze week, en index 7 maandag van volgende week!
                 const isFirstDayThisWeek = index === 0;
                 const isFirstDayNextWeek = index === 7;
 
+                // --- DE STATUS EN ICOON LOGICA ---
                 let dayStatusColor = COLORS.textMuted;
                 let dayIcon = "ellipse-outline";
+                let lopers = "";
 
-                // Bepaal de status (ook van het verleden!)
-                if (day.status === "completed") {
+                if (isBeforeCreation) {
+                  // 1. Crew bestond nog niet
+                  dayStatusColor = "#475569";
+                  dayIcon = "remove-circle-outline";
+                  lopers = "    Crew not formed yet";
+                } else if (day.status === "completed") {
+                  // 2. Goal is complete! Groen vinkje
                   dayStatusColor = COLORS.mascotGreen;
                   dayIcon = "checkmark-circle";
-                }
-                if (day.status === "failed") {
+                  lopers = day.is_rest_day
+                    ? "Rest Day completed! ❄️"
+                    : (day.assigned_users?.map((id) => crewProfiles[id]).join(" & ") || "Goal achieved!");
+                } else if (day.status === "failed") {
+                  // 3. Goal is gefaald (rood kruis)
                   dayStatusColor = "#e74c3c";
                   dayIcon = "close-circle";
-                }
-                if (day.status === "saved_by_token") {
+                  lopers = day.is_rest_day 
+                    ? "Rest Day" 
+                    : (day.assigned_users?.map((id) => crewProfiles[id]).join(" & ") || "Failed");
+                } else if (day.status === "saved_by_token") {
+                  // 4. Gered door een nood-token
                   dayStatusColor = COLORS.secondaryYellow;
                   dayIcon = "shield-checkmark";
-                }
-                if (day.status === "pending") {
+                  lopers = "Streak saved! 🛡️";
+                } else {
+                  // 5. Dag is nog in afwachting (pending)
                   if (day.is_rest_day) {
                     dayStatusColor = "#3498db";
                     dayIcon = "snow";
-                  } else if (isToday) {
-                    dayStatusColor = COLORS.primaryOrange;
-                    dayIcon = "walk";
+                    lopers = "Rest Day ❄️";
+                  } else {
+                    dayStatusColor = isToday ? COLORS.primaryOrange : COLORS.textMuted;
+                    dayIcon = isToday ? "walk" : "ellipse-outline";
+                    lopers = day.assigned_users?.map((id) => crewProfiles[id]).join(" & ") || "No runners";
                   }
                 }
 
-                const lopers = day.is_rest_day ? "Rest Day" : day.assigned_users?.map((id) => crewProfiles[id]).join(" & ") || "Ex-Crew member";
-
                 return (
                   <React.Fragment key={index}>
-                    {/* SECTIE TITELS */}
                     {isFirstDayThisWeek && <Text style={[styles.sectionDivider, { marginTop: 0 }]}>This Week</Text>}
                     {isFirstDayNextWeek && <Text style={styles.sectionDivider}>Next Week</Text>}
 
                     <View style={[styles.weekRow, isToday ? styles.todayRow : styles.standardRow]}>
                       <View style={styles.weekDayCol}>
-                        <Text style={[styles.weekDayText, isToday ? { color: COLORS.secondaryYellow } : null]}>{dayName}</Text>
+                        <Text style={[styles.weekDayText, isToday ? { color: COLORS.secondaryYellow } : isBeforeCreation ? { color: "#475569" } : null]}>{dayName}</Text>
                       </View>
                       <View style={styles.weekIconCol}>
                         <Ionicons name={dayIcon} size={24} color={dayStatusColor} />
                       </View>
                       <View style={styles.weekNameCol}>
-                        <Text style={styles.weekRunnerText} numberOfLines={1}>
+                        <Text style={[styles.weekRunnerText, isBeforeCreation ? { color: "#475569", fontStyle: "italic" } : null]} numberOfLines={1}>
                           {lopers}
                         </Text>
                       </View>
-                      {isToday && (
+                      {isToday && !isBeforeCreation && (
                         <View style={styles.todayBadge}>
                           <Text style={styles.todayBadgeText}>Today</Text>
                         </View>
@@ -539,7 +558,6 @@ const styles = StyleSheet.create({
     paddingBottom: 5,
   },
   standardRow: {
-    // Deze geven we nu aan alle normale dagen
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255,255,255,0.05)",
   },
@@ -549,7 +567,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: "rgba(249, 212, 35, 0.08)",
     paddingHorizontal: 15,
-    marginVertical: 6, // Geeft ademruimte zonder afgesneden te worden
+    marginVertical: 6,
   },
   todayBadge: {
     backgroundColor: COLORS.secondaryYellow,

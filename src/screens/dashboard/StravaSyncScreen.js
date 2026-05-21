@@ -75,10 +75,29 @@ export default function StravaSyncScreen({ navigation, route }) {
 
       if (activeQuests) {
         for (const quest of activeQuests) {
-          const questNewProgress = (quest.current_progress || 0) + timeMins;
+          const oldProgress = quest.current_progress || 0;
+          const questNewProgress = oldProgress + timeMins;
+
+          // 🚀 CHECK: Is de quest zojuist GEFINISHED door deze run?
+          if (oldProgress < quest.target_amount && questNewProgress >= quest.target_amount) {
+            console.log(`🏆 QUEST VOLTOOID: ${quest.title}! Token wordt uitgereikt...`);
+            
+            // Haal huidige tokens op
+            const { data: crewData } = await supabase.from("crews").select("rest_day_tokens").eq("id", crewMember.crew_id).single();
+            
+            if (crewData) {
+              // Verhoog met 1, maar zet een keiharde limiet op 5 (Math.min voorkomt dat het boven de 5 stijgt)
+              const newTokens = Math.min(crewData.rest_day_tokens + 1, 5);
+              await supabase.from("crews").update({ rest_day_tokens: newTokens }).eq("id", crewMember.crew_id);
+              
+              console.log(`🛡️ Token toegevoegd! Nieuw totaal: ${newTokens}/5`);
+            }
+          }
+
+          // Update de voortgang van de quest
           await supabase.from("crew_quests").update({ current_progress: questNewProgress }).eq("id", quest.id);
         }
-        console.log(`🚀 Quest voortgang succesvol verhoogd met ${timeMins} minuten!`);
+        console.log(`🚀 Quest voortgang succesvol verhoogd met ${timeMins} minutes!`);
       }
 
       await supabase.from("crew_activity_log").insert({
