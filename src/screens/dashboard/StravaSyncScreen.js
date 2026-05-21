@@ -5,6 +5,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "../../theme/colors";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "../../lib/supabase";
+import { Alert } from "react-native";
+import { checkAndProgressStreak } from "../../services/streakService";
 
 export default function StravaSyncScreen({ navigation, route }) {
   const { runs = [] } = route.params || {};
@@ -65,19 +67,19 @@ export default function StravaSyncScreen({ navigation, route }) {
       const { data: crew } = await supabase.from("crews").select("total_minutes").eq("id", crewMember.crew_id).single();
 
       const newTotal = (crew.total_minutes || 0) + timeMins;
+      
+      // Update ook even de total_minutes in de crews tabel (ontbrak in je vorige snippet)
+      await supabase.from("crews").update({ total_minutes: newTotal }).eq("id", crewMember.crew_id);
 
-      const { data: activeQuests } = await supabase.from("crew_quests").select("id, current_progress").eq("crew_id", crewMember.crew_id).eq("type", "minutes"); // We pakken alleen de minuten-quests
+      const { data: activeQuests } = await supabase.from("crew_quests").select("id, current_progress").eq("crew_id", crewMember.crew_id).eq("type", "minutes");
 
       if (activeQuests) {
-        // Loop door de actieve quests heen (vaak is het er nu 1, maar handig voor later)
         for (const quest of activeQuests) {
           const questNewProgress = (quest.current_progress || 0) + timeMins;
-
           await supabase.from("crew_quests").update({ current_progress: questNewProgress }).eq("id", quest.id);
         }
         console.log(`🚀 Quest voortgang succesvol verhoogd met ${timeMins} minuten!`);
       }
-      // In StravaSyncScreen.js -> handleSync() net voor navigation.goBack()
 
       await supabase.from("crew_activity_log").insert({
         crew_id: crewMember.crew_id,
@@ -91,9 +93,34 @@ export default function StravaSyncScreen({ navigation, route }) {
       });
 
       console.log(`🎉 Succes! ${timeMins} minuten toegevoegd aan de Crew!`);
-      navigation.goBack();
+
+      // 🚀 STREAK ENGINE VALIDATIE AANROEPEN
+      const streakResult = await checkAndProgressStreak(crewMember.crew_id, user.id);
+
+      if (streakResult.status === 'day_completed') {
+        Alert.alert(
+          "🔥 STREAK UP!", 
+          `Geweldig! Iedereen die vandaag de baton had heeft gelopen! De streak staat nu op ${streakResult.newStreak} dagen!`,
+          [{ text: "Awesome!", onPress: () => navigation.goBack() }]
+        );
+      } else if (streakResult.status === 'waiting_for_partner') {
+        Alert.alert(
+          "Run Gelogd! ⏳", 
+          `Jouw deel zit er op! We wachten nu nog op je teamgenoot die vandaag ook de baton heeft om de streak veilig te stellen.`,
+          [{ text: "Check", onPress: () => navigation.goBack() }]
+        );
+      } else {
+        // Voor rest days, of als ze vandaag niet aan de beurt waren
+        Alert.alert(
+          "Run Gesynced! 🏃", 
+          `Lekker bezig! Je run is succesvol toegevoegd aan de totale minuten van de crew.`,
+          [{ text: "Top!", onPress: () => navigation.goBack() }]
+        );
+      }
+
     } catch (error) {
       console.error("Fout bij syncen:", error.message);
+      Alert.alert("Oeps!", error.message);
     }
   };
 

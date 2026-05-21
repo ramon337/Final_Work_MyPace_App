@@ -7,6 +7,7 @@ import CustomButton from "../../components/ui/CustomButton";
 import ProgressBar from "../../components/ui/ProgressBar";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "../../lib/supabase";
+import { recalculateFutureSchedule } from "../../services/streakService";
 
 export default function AccountSetupScreen({ navigation }) {
   const [currentStep, setCurrentStep] = useState(1);
@@ -86,7 +87,7 @@ export default function AccountSetupScreen({ navigation }) {
     if (selectedCrewAction === "invite" && cleanCode !== "") {
       console.log("Controleren of invite code bestaat:", cleanCode);
 
-      const { data: crewCheck } = await supabase.from("crews").select("id").eq("invite_code", cleanCode).maybeSingle(); // maybeSingle voorkomt een harde crash als er 0 resultaten zijn
+      const { data: crewCheck } = await supabase.from("crews").select("id").eq("invite_code", cleanCode).maybeSingle();
 
       if (!crewCheck) {
         setStepSixError("We couldn't find a Crew with that code. Please check and try again.");
@@ -126,29 +127,36 @@ export default function AccountSetupScreen({ navigation }) {
           // 1. Maak de gebruiker lid van de nieuwe crew
           await supabase.from("crew_members").insert([{ user_id: userId, crew_id: crewData.id }]);
 
-          // 2. 🚀 NIEUW: Koppel direct de eerste gezamenlijke Quest aan de Crew!
+          // 2. Koppel direct de eerste gezamenlijke Quest aan de Crew
           await supabase.from("crew_quests").insert([
             {
               crew_id: crewData.id,
               title: "Route 66 Challenge",
               subtitle: "Run the legendary highway across the US!",
-              target_amount: 3940, // Bijvoorbeeld 3940 minuten
+              target_amount: 3940, 
               current_progress: 0,
               type: "minutes",
             },
           ]);
 
-          console.log("Crew gemaakt, lid geworden en Quest gekoppeld!");
+          console.log("Crew gemaakt, lid geworden en Quest gekoppeld! (Geen herberekening nodig voor nieuwe crew)");
         }
       } else if (selectedCrewAction === "invite" && verifiedCrewId !== null) {
-        // We gebruiken hier het verifiedCrewId dat we in stap 1 al hadden gevonden!
+        
+        // 1. Voeg toe aan bestaande crew
         await supabase.from("crew_members").insert([{ user_id: userId, crew_id: verifiedCrewId }]);
+        
+        // 2. Log in de activity feed
         await supabase.from("crew_activity_log").insert({
           crew_id: verifiedCrewId,
           user_id: userId,
           event_type: "member_joined",
         });
-        console.log("Succesvol aangesloten bij crew via code!");
+
+        // 3. 🚀 DE TRIGGER: Herbereken de kalender vanaf morgen voor deze crew!
+        await recalculateFutureSchedule(verifiedCrewId);
+
+        console.log("Succesvol aangesloten bij crew via code en toekomstige kalender herberekend!");
       }
 
       return true; // Alles is 100% gelukt!

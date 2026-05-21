@@ -5,7 +5,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../theme/colors';
 import { useUser } from '../../context/UserContext';
+import { recalculateFutureSchedule } from "../../services/streakService";
 import { supabase } from '../../lib/supabase';
+
 
 export default function CrewSettingsScreen({ navigation }) {
   const { crewData, refreshCrewData } = useUser();
@@ -136,6 +138,38 @@ export default function CrewSettingsScreen({ navigation }) {
     }
   };
 
+const handleLeaveCrew = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Zoek jouw eigen naam op uit de lokaal geladen members list (die heb je al!)
+      const myMemberRecord = members.find(m => m.id === user.id);
+      const myName = myMemberRecord?.name || "A member";
+
+      // 1. Verwijder jezelf uit de crew_members tabel
+      await supabase.from("crew_members").delete().eq("user_id", user.id);
+
+      // 2. Log de actie in de activity feed, nu met de juiste, gevonden naam
+      await supabase.from("crew_activity_log").insert({
+        crew_id: crewData.id,
+        event_type: "member_left",
+        metadata: { ex_member_name: myName }
+      });
+
+      // 3. 🚀 DE LOGICA: Herbereken de toekomst voor de overgebleven leden!
+      await recalculateFutureSchedule(crewData.id);
+
+      // 4. Forceer de Context om de Crew leeg te maken in het geheugen!
+      refreshCrewData(); 
+
+      // 5. Navigeer terug naar het start/onboarding scherm
+      navigation.navigate("AccountSetup");
+    } catch (error) {
+      console.error("Fout bij verlaten:", error);
+    }
+  };
+
   const removeMember = async (userId, name) => {
     Alert.alert(
       "Remove Member",
@@ -154,6 +188,7 @@ export default function CrewSettingsScreen({ navigation }) {
                 event_type: 'member_left',
                 metadata: { ex_member_name: name }
               });
+              await recalculateFutureSchedule(crewData.id);
               fetchRealMembers(); 
             } catch (error) {
               console.error(error);
@@ -249,6 +284,11 @@ export default function CrewSettingsScreen({ navigation }) {
           )}
         />
       )}
+      <View style={styles.leaveBtn}>
+                  <TouchableOpacity onPress={handleLeaveCrew} style={styles.leaveButton}>
+                    <Text style={styles.leaveText}>Leave Crew</Text>
+                  </TouchableOpacity>
+              </View>
 
       {/* INLINE INVITE BAR ONDERAAN */}
       {!isCrewFull && crewData?.invite_code && (
@@ -296,5 +336,8 @@ const styles = StyleSheet.create({
   cleanCodeText: { color: COLORS.textMuted, fontFamily: 'Inter', fontSize: 16 },
   codeHighlight: { color: COLORS.textLight, fontFamily: 'Baloo-Bold', fontSize: 18, letterSpacing: 1 },
   shareInlineBtn: { flexDirection: 'row', alignItems: 'center', marginLeft: 15, backgroundColor: 'rgba(251, 191, 36, 0.1)', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(251, 191, 36, 0.2)' },
-  shareInlineText: { color: COLORS.secondaryYellow, fontFamily: 'Inter', fontWeight: 'bold', fontSize: 13, marginLeft: 5 }
+  shareInlineText: { color: COLORS.secondaryYellow, fontFamily: 'Inter', fontWeight: 'bold', fontSize: 13, marginLeft: 5 },
+  leaveBtn: { height: 40, justifyContent: "center", marginTop: 10 },
+  leaveButton: { width: '40%', paddingVertical: 10, paddingHorizontal: 20, alignSelf: "center", backgroundColor: 'rgba(255, 107, 107, 0.1)', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255, 107, 107, 0.2)', bottom: 10 },
+  leaveText: { fontSize: 16, fontFamily: "Inter", fontWeight: "600", color: COLORS.primaryOrange, alignSelf: "center" },
 });
