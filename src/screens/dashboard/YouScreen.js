@@ -14,11 +14,12 @@ export default function ProfileScreen() {
   const [profile, setProfile] = useState({
     displayName: "Runner",
     avatarUrl: null,
-    weeklyGoal: 2, // Lokale camelCase voor React
+    weeklyGoal: 2,
     minutesContributed: 0,
     totalRuns: 0,
     highestStreak: 0,
-    crewName: "No Crew Yet"
+    crewName: "No Crew Yet",
+    weekOverview: [] // 🚀 NIEUW: Array om de weekplanning in op te slaan
   });
 
   const fetchProfileData = async () => {
@@ -31,7 +32,7 @@ export default function ProfileScreen() {
       }
       setCurrentUserId(user.id);
 
-      // 1. Haal de onboarding data op (let op de underscore uit de DB!)
+      // 1. Haal de onboarding data op
       const { data: profData, error: profError } = await supabase
         .from('profiles')
         .select('display_name, avatar_url, weekly_goal')
@@ -43,9 +44,7 @@ export default function ProfileScreen() {
       // 2. Haal de crew-naam op
       const { data: crewMemberData } = await supabase
         .from('crew_members')
-        .select(`
-          crews ( name, id )
-        `)
+        .select(`crews ( name, id )`)
         .eq('user_id', user.id)
         .maybeSingle();
 
@@ -55,8 +54,10 @@ export default function ProfileScreen() {
       // 3. Live statistieken berekenen uit de logs
       let liveMinutes = 0;
       let liveRuns = 0;
+      let myWeek = []; // Variabele voor de kalender
 
       if (crewId) {
+        // --- Statistieken ---
         const { data: userLogs } = await supabase
           .from('crew_activity_log')
           .select('metadata')
@@ -68,19 +69,59 @@ export default function ProfileScreen() {
           liveRuns = userLogs.length;
           liveMinutes = userLogs.reduce((total, log) => total + (log.metadata?.duration_minutes || 0), 0);
         }
+
+        // --- 🚀 NIEUW: Persoonlijke Weekplanning Ophalen ---
+        const getLocalYYYYMMDD = (d) => {
+          const offset = d.getTimezoneOffset() * 60000;
+          return new Date(d - offset).toISOString().split('T')[0];
+        };
+        
+        const now = new Date();
+        const dayOfWeek = now.getDay();
+        const daysSinceMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+        
+        const thisMonday = new Date(now);
+        thisMonday.setDate(now.getDate() - daysSinceMonday);
+        const mondayStr = getLocalYYYYMMDD(thisMonday);
+        
+        const thisSunday = new Date(thisMonday);
+        thisSunday.setDate(thisMonday.getDate() + 6);
+        const sundayStr = getLocalYYYYMMDD(thisSunday);
+
+        const { data: assignments } = await supabase
+          .from('crew_daily_assignments')
+          .select('assignment_date, assigned_users, completed_users')
+          .eq('crew_id', crewId)
+          .gte('assignment_date', mondayStr)
+          .lte('assignment_date', sundayStr)
+          .order('assignment_date', { ascending: true });
+
+        // Vul een vaste lijst van 7 dagen, en zoek de status erbij
+        for (let i = 0; i < 7; i++) {
+          const d = new Date(thisMonday);
+          d.setDate(thisMonday.getDate() + i);
+          const dStr = getLocalYYYYMMDD(d);
+          const dayName = d.toLocaleDateString("en-US", { weekday: "short" });
+          
+          const record = assignments?.find(a => a.assignment_date === dStr);
+          
+          const isAssigned = record?.assigned_users?.includes(user.id) || false;
+          const isCompleted = record?.completed_users?.includes(user.id) || false;
+
+          myWeek.push({ dayName, dateStr: dStr, isAssigned, isCompleted });
+        }
       }
 
       if (profData) {
         setProfile({
           displayName: profData.display_name || "Unknown Runner",
           avatarUrl: profData.avatar_url || null,
-          // 💡 DE FIX: We mappen de database 'weekly_goal' (met underscore) 
-          // nu expliciet naar onze lokale 'weeklyGoal' state!
           weeklyGoal: profData.weekly_goal || 2, 
           minutesContributed: liveMinutes,
           totalRuns: liveRuns,
           highestStreak: liveRuns > 0 ? 1 : 0,
-          crewName: crewName
+          crewName: crewName,
+          weekOverview: myWeek // Koppel hem aan de state!
         });
       }
     } catch (error) {
@@ -94,8 +135,7 @@ export default function ProfileScreen() {
     fetchProfileData();
   }, []);
 
-// 🚀 WATERDICHTE PROFIELFOTO UPLOAD MET BASE64 CONVERSIE
-  // 🚀 PROFIELFOTO UPLOAD VIA FORMDATA (Zonder externe modules)
+  // 🚀 PROFIELFOTO UPLOAD VIA FORMDATA
   const pickAndUploadImage = async () => {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -116,7 +156,6 @@ export default function ProfileScreen() {
       setUploading(true);
       const pickedImage = result.assets[0];
       
-      // Maak een handig FormData object aan dat Expo vloeiend kan versturen
       const formData = new FormData();
       const fileExt = pickedImage.uri.split('.').pop() || 'jpg';
       const fileName = `${currentUserId}-${Date.now()}.${fileExt}`;
@@ -127,7 +166,6 @@ export default function ProfileScreen() {
         type: `image/${fileExt}`,
       });
 
-      // Upload rechtstreeks naar de Supabase Storage API met de Formdata
       const { error: uploadError } = await supabase.storage
         .from('avatars')
         .upload(fileName, formData, {
@@ -137,12 +175,10 @@ export default function ProfileScreen() {
 
       if (uploadError) throw uploadError;
 
-      // Genereer de publieke URL
       const { data: { publicUrl } } = supabase.storage
         .from('avatars')
         .getPublicUrl(fileName);
 
-      // Update de profiles tabel in de database
       const { error: updateError } = await supabase
         .from('profiles')
         .update({ avatar_url: publicUrl })
@@ -150,7 +186,6 @@ export default function ProfileScreen() {
 
       if (updateError) throw updateError;
 
-      // Update de UI direct live
       setProfile(prev => ({ ...prev, avatarUrl: publicUrl }));
       Alert.alert("Success", "Profile picture updated!");
 
@@ -178,7 +213,6 @@ export default function ProfileScreen() {
 
   const updateGoalInDB = async (newGoal) => {
     try {
-      // 💡 DE FIX: We updaten de database kolom 'weekly_goal' (met underscore)
       const { error } = await supabase
         .from('profiles')
         .update({ weekly_goal: newGoal })
@@ -186,7 +220,6 @@ export default function ProfileScreen() {
 
       if (error) throw error;
 
-      // En zetten hem daarna in de lokale camelCase state
       setProfile(prev => ({ ...prev, weeklyGoal: newGoal }));
       Alert.alert("Success", "Weekly goal updated!");
     } catch (error) {
@@ -262,15 +295,46 @@ export default function ProfileScreen() {
           </Text>
         </View>
 
-        {/* THIS WEEK PLANNING */}
+        {/* 🚀 VERNIEUWDE: THIS WEEK PLANNING */}
         <View style={styles.card}>
           <View style={styles.titleWithIcon}>
             <Ionicons name="calendar-outline" size={20} color={COLORS.mascotGreen} />
-            <Text style={styles.cardTitle}>This Week</Text>
+            <Text style={styles.cardTitle}>My Schedule This Week</Text>
           </View>
-          <Text style={styles.placeholderText}>
-            Days will be schedulable as soon as the Streak & Baton engine goes live! ⚡️
-          </Text>
+          
+          {profile.weekOverview && profile.weekOverview.length > 0 ? (
+            <View style={styles.weekOverviewRow}>
+              {profile.weekOverview.map((day, index) => {
+                // Standaard: niet ingepland (subtiel minnetje)
+                let iconName = "remove";
+                let iconColor = "rgba(255,255,255,0.1)";
+
+                // Is gelopen? (Oranje loper!)
+                if (day.isCompleted) {
+                  iconName = "walk";
+                  iconColor = COLORS.primaryOrange;
+                } 
+                // Moet nog lopen? (Grijze loper!)
+                else if (day.isAssigned) {
+                  iconName = "walk";
+                  iconColor = COLORS.textMuted;
+                }
+
+                return (
+                  <View key={index} style={styles.dayCol}>
+                    <Text style={styles.dayLabel}>{day.dayName.substring(0,2)}</Text>
+                    <View style={styles.iconWrapper}>
+                      <Ionicons name={iconName} size={20} color={iconColor} />
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          ) : (
+            <Text style={styles.placeholderText}>
+              No schedule available yet. Join a Crew to start running!
+            </Text>
+          )}
         </View>
 
         {/* STATS ROOSTER */}
@@ -356,5 +420,11 @@ const styles = StyleSheet.create({
   badgeIconCircle: { width: 50, height: 50, borderRadius: 25, justifyContent: 'center', alignItems: 'center', marginBottom: 6 },
   badgeLabel: { color: COLORS.textLight, fontFamily: 'Inter', fontSize: 12, fontWeight: '500', textAlign: 'center' },
   logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 35, paddingVertical: 12, borderRadius: 12, backgroundColor: 'rgba(255, 107, 107, 0.08)', borderWidth: 1, borderColor: 'rgba(255, 107, 107, 0.15)' },
-  logoutText: { color: '#FF6B6B', fontFamily: 'Inter', fontWeight: 'bold', fontSize: 15, marginLeft: 8 }
+  logoutText: { color: '#FF6B6B', fontFamily: 'Inter', fontWeight: 'bold', fontSize: 15, marginLeft: 8 },
+  
+  // 🚀 NIEUWE STYLES VOOR DE WEEKPLANNING
+  weekOverviewRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 },
+  dayCol: { alignItems: 'center' },
+  dayLabel: { color: COLORS.textMuted, fontFamily: 'Inter', fontSize: 12, marginBottom: 8, textTransform: 'uppercase' },
+  iconWrapper: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.03)', justifyContent: 'center', alignItems: 'center' }
 });
