@@ -1,6 +1,7 @@
 // src/screens/main/CrewScreen.js
 import React, { useState, useEffect } from "react";
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator, Share, Modal } from "react-native";
+// 🚀 FIX: ImageBackground toegevoegd aan de imports!
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator, Image, Modal, ImageBackground } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "../../theme/colors";
 import * as WebBrowser from "expo-web-browser";
@@ -22,6 +23,12 @@ export default function CrewScreen({ navigation }) {
 
   // Activity log states
   const [activities, setActivities] = useState([]);
+  
+  // Paginering logica
+  const ACTIVITIES_PER_PAGE = 5;
+  const [activitiesPage, setActivitiesPage] = useState(0); 
+  const [hasMoreActivities, setHasMoreActivities] = useState(true); 
+  const [isMoreLoading, setIsMoreLoading] = useState(false); 
 
   // Streak Engine states
   const [scheduleLoading, setScheduleLoading] = useState(true);
@@ -30,7 +37,10 @@ export default function CrewScreen({ navigation }) {
   const [batonHolderNames, setBatonHolderNames] = useState("");
   const [timeRemaining, setTimeRemaining] = useState("");
   const [isWeekModalVisible, setWeekModalVisible] = useState(false);
-  const [crewProfiles, setCrewProfiles] = useState({});
+  
+  // Crew Profiles voor avatars
+  const [crewProfilesMap, setCrewProfilesMap] = useState({});
+  const [crewMembersList, setCrewMembersList] = useState([]);
 
   // --- 2. DE COUNTDOWN TIMER ---
   useEffect(() => {
@@ -59,11 +69,38 @@ export default function CrewScreen({ navigation }) {
   }, []);
 
   // --- 3. DATA OPHALEN & STREAK ENGINE ---
-  const fetchActivityLog = async () => {
+  const fetchActivityLog = async (pageNumber, shouldAppend = false) => {
     if (!crewData?.id) return;
-    const { data } = await supabase.from("crew_activity_log").select(`id, event_type, metadata, created_at, profiles ( display_name )`).eq("crew_id", crewData.id).order("created_at", { ascending: false }).limit(5);
 
-    if (data) setActivities(data);
+    if (shouldAppend) setIsMoreLoading(true);
+
+    const from = pageNumber * ACTIVITIES_PER_PAGE;
+    const to = from + ACTIVITIES_PER_PAGE - 1;
+
+    const { data } = await supabase
+      .from("crew_activity_log")
+      .select(`id, event_type, metadata, created_at, profiles ( display_name )`)
+      .eq("crew_id", crewData.id)
+      .order("created_at", { ascending: false })
+      .range(from, to); 
+
+    if (shouldAppend) setIsMoreLoading(false);
+
+    if (data) {
+      if (shouldAppend) {
+        setActivities((prev) => [...prev, ...data]);
+      } else {
+        setActivities(data);
+      }
+
+      if (data.length < ACTIVITIES_PER_PAGE) {
+        setHasMoreActivities(false);
+      } else {
+        setHasMoreActivities(true);
+      }
+    } else {
+      setHasMoreActivities(false); 
+    }
   };
 
   const initStreakEngine = async () => {
@@ -74,24 +111,29 @@ export default function CrewScreen({ navigation }) {
     try {
       setScheduleLoading(true);
 
-      // A. Controleer de acties van gisteren
       await processNachtCheck(crewData.id);
-
-      // B. Zorg dat de komende 14 dagen zijn ingepland in de database
       await ensureFourteenDaySchedule(crewData.id);
 
-      // C. Haal alle profielen op om ID's naar echte namen te vertalen
-      const { data: profilesData } = await supabase.from("crew_members").select("user_id, profiles(display_name)").eq("crew_id", crewData.id);
+      const { data: profilesData } = await supabase
+        .from("crew_members")
+        .select("user_id, profiles(display_name, avatar_url)")
+        .eq("crew_id", crewData.id);
 
       const profileMap = {};
+      const membersArray = [];
+
       if (profilesData) {
         profilesData.forEach((p) => {
-          profileMap[p.user_id] = p.profiles?.display_name || "Loper";
+          const name = p.profiles?.display_name || "Loper";
+          const avatar = p.profiles?.avatar_url || null;
+          
+          profileMap[p.user_id] = name;
+          membersArray.push({ id: p.user_id, name, avatar });
         });
-        setCrewProfiles(profileMap);
+        setCrewProfilesMap(profileMap);
+        setCrewMembersList(membersArray);
       }
 
-      // D. Bepaal EXACT de maandag van deze week, en de zondag van volgende week
       const getLocalYYYYMMDD = (d) => {
         const offset = d.getTimezoneOffset() * 60000;
         return new Date(d - offset).toISOString().split("T")[0];
@@ -99,7 +141,7 @@ export default function CrewScreen({ navigation }) {
 
       const now = new Date();
       const dayOfWeek = now.getDay();
-      const daysSinceMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Zondag is 0 in JS
+      const daysSinceMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
 
       const thisMonday = new Date(now);
       thisMonday.setDate(now.getDate() - daysSinceMonday);
@@ -109,19 +151,24 @@ export default function CrewScreen({ navigation }) {
       nextSunday.setDate(thisMonday.getDate() + 13);
       const nextSundayStr = getLocalYYYYMMDD(nextSunday);
 
-      const { data: assignments } = await supabase.from("crew_daily_assignments").select("*").eq("crew_id", crewData.id).gte("assignment_date", mondayStr).lte("assignment_date", nextSundayStr).order("assignment_date", { ascending: true });
+      const { data: assignments } = await supabase
+        .from("crew_daily_assignments")
+        .select("*")
+        .eq("crew_id", crewData.id)
+        .gte("assignment_date", mondayStr)
+        .lte("assignment_date", nextSundayStr)
+        .order("assignment_date", { ascending: true });
 
       if (assignments && assignments.length > 0) {
         setWeekAssignments(assignments);
 
-        // Omdat de lijst nu altijd op maandag begint, moeten we 'vandaag' even opzoeken in de lijst!
         const todayStr = getLocalYYYYMMDD(new Date());
         const todayData = assignments.find((a) => a.assignment_date === todayStr);
 
         setTodayAssignment(todayData || null);
 
         if (todayData?.is_rest_day) {
-          setBatonHolderNames("Rest Day ❄️");
+          setBatonHolderNames("Rest Day");
         } else if (todayData?.assigned_users?.length > 0) {
           const names = todayData.assigned_users.map((id) => profileMap[id] || "Ex-Crew member").join(" & ");
           setBatonHolderNames(names);
@@ -137,12 +184,20 @@ export default function CrewScreen({ navigation }) {
   };
 
   useEffect(() => {
+    if (activitiesPage > 0) {
+      fetchActivityLog(activitiesPage, true);
+    }
+  }, [activitiesPage]);
+
+  useEffect(() => {
     const unsubscribe = navigation.addListener("focus", () => {
       refreshCrewData();
-      fetchActivityLog();
+      setActivitiesPage(0);
+      setHasMoreActivities(true);
+      fetchActivityLog(0, false);
       initStreakEngine();
     });
-    fetchActivityLog();
+    fetchActivityLog(0, false);
     initStreakEngine();
     return unsubscribe;
   }, [navigation, crewData?.id]);
@@ -223,36 +278,21 @@ export default function CrewScreen({ navigation }) {
           </Text>
         );
       case "member_joined":
-        return (
-          <Text>
-            {name} <Text style={styles.activityAction}>joined the Crew! 👋</Text>
-          </Text>
-        );
+        return <Text>{name} <Text style={styles.activityAction}>joined the Crew! 👋</Text></Text>;
       case "member_left":
-        return (
-          <Text>
-            {item.metadata?.ex_member_name || "A member"} <Text style={styles.activityAction}>left the Crew.</Text>
-          </Text>
-        );
+        return <Text>{item.metadata?.ex_member_name || "A member"} <Text style={styles.activityAction}>left the Crew.</Text></Text>;
       case "streak_broken":
-        return (
-          <Text>
-            💥 Oh no! <Text style={styles.activityAction}>The relay streak was broken.</Text>
-          </Text>
-        );
+        return <Text>💥 Oh no! <Text style={styles.activityAction}>The relay streak was broken.</Text></Text>;
       case "rest_day_used":
-        return (
-          <Text>
-            🛡️ A Rest Day Token <Text style={styles.activityAction}>was deployed to save the streak!</Text>
-          </Text>
-        );
+        return <Text>A Rest Day Token <Text style={styles.activityAction}>was deployed to save the streak!</Text></Text>;
       default:
         return <Text>Something happened in the crew.</Text>;
     }
   };
 
   // --- 5. UI RENDER ---
-  if ((userLoading && !crewData) || scheduleLoading) {
+
+  if ((userLoading && !crewData) || (scheduleLoading && weekAssignments.length === 0)) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={COLORS.primaryOrange} />
@@ -262,6 +302,7 @@ export default function CrewScreen({ navigation }) {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+      
       {/* HEADER */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.settingsButtonRight} activeOpacity={0.7} onPress={() => navigation.navigate("CrewSettings")}>
@@ -271,59 +312,76 @@ export default function CrewScreen({ navigation }) {
         <Text style={styles.crewTitle}>{crewData?.name || "Geen Crew"}</Text>
 
         <View style={styles.crewMembersContainer}>
-          <View style={[styles.avatar, { backgroundColor: COLORS.primaryOrange }]}>
-            <Text style={styles.avatarText}>J</Text>
-          </View>
-          <View style={[styles.avatar, { backgroundColor: COLORS.mascotGreen, marginLeft: -15 }]}>
-            <Text style={styles.avatarText}>S</Text>
-          </View>
-          <View style={[styles.avatar, { backgroundColor: COLORS.secondaryYellow, marginLeft: -15 }]}>
-            <Text style={styles.avatarText}>M</Text>
-          </View>
-          <View style={[styles.avatar, { backgroundColor: "#3498db", marginLeft: -15 }]}>
-            <Text style={styles.avatarText}>L</Text>
-          </View>
-          <View style={[styles.avatar, { backgroundColor: "#e74c3c", marginLeft: -15 }]}>
-            <Text style={styles.avatarText}>R</Text>
-          </View>
+          {crewMembersList.map((member, index) => {
+            const initial = member.name.charAt(0).toUpperCase();
+            const bgColors = [COLORS.primaryOrange, COLORS.mascotGreen, COLORS.secondaryYellow, "#3498db", "#9b59b6"];
+            const color = bgColors[index % bgColors.length];
+
+            return (
+              <View key={member.id} style={[styles.avatar, { backgroundColor: color, marginLeft: index > 0 ? -15 : 0 }]}>
+                {member.avatar ? <Image source={{ uri: member.avatar }} style={styles.avatarImage} /> : <Text style={styles.avatarText}>{initial}</Text>}
+              </View>
+            );
+          })}
         </View>
       </View>
 
-      {/* STREAK BANNER */}
-      <View style={styles.streakBanner}>
-        <Ionicons name="flame" size={32} color={COLORS.primaryOrange} style={styles.streakIcon} />
-        <View style={styles.streakTextContainer}>
-          <Text style={styles.streakTitle}>
-            Relay streak: {crewData?.current_streak || 0} {crewData?.current_streak === 1 ? "Day" : "Days"}! 🔥
+      <View style={styles.bannerHeader}>
+        <Text style={styles.sectionTitle}>Relay Streak</Text>
+      </View>
+      
+      {/* Check goed of dit pad klopt in jouw mappenstructuur! */}
+      <ImageBackground 
+        source={require('../../assets/images/streak-banner.png')} 
+        style={styles.illustratorBannerPlaceholder}
+        imageStyle={{ borderRadius: 16 }}
+      >
+        {/* Linkerkant (leeglaten zodat de illustratie van de mascotte hier zichtbaar is) */}
+        <View style={{ flex: 1 }} /> 
+
+        {/* Rechterkant (Groot het getal en 'Days') */}
+        <View style={styles.bannerTextContainer}>
+          <Text style={styles.bannerStreakNumber}>{crewData?.current_streak || 0}</Text>
+          <Text style={styles.bannerStreakLabel}>
+            {crewData?.current_streak === 1 ? "Day" : "Days"}
           </Text>
-          <Text style={styles.streakSubtitle}>{crewData?.rest_day_tokens || 0} Rest Day Tokens over 🛡️</Text>
         </View>
-      </View>
+      </ImageBackground>
 
-      {/* BATON HOLDER CARD */}
-      <TouchableOpacity style={styles.batonCard} activeOpacity={0.8} onPress={() => setWeekModalVisible(true)}>
-        <View style={styles.batonHeader}>
-          <Text style={styles.batonTitle}>Today's Baton Holder</Text>
-          <Text style={styles.viewWeekText}>View Week &gt;</Text>
-        </View>
-
-        <View style={styles.batonMain}>
-          <View style={[styles.largeAvatar, { backgroundColor: todayAssignment?.status === "completed" ? COLORS.mascotGreen : todayAssignment?.is_rest_day ? "#3498db" : COLORS.primaryOrange }]}>
-            <Ionicons name={todayAssignment?.status === "completed" ? "checkmark-circle" : todayAssignment?.is_rest_day ? "snow" : "walk"} size={30} color="#FFF" />
+      {/* CONDITIONELE WEERGAVE OP BASIS VAN DE STREAK */}
+      {crewData?.current_streak === 0 ? (
+        <View style={styles.startStreakCard}>
+          <View style={styles.rocketCircle}>
+            <Ionicons name="rocket" size={32} color="#FFF" />
           </View>
-          <View style={styles.batonInfo}>
-            <Text style={styles.batonName} numberOfLines={1}>
-              {batonHolderNames}
-            </Text>
-            <View style={styles.timerRow}>
-              <Ionicons name="time-outline" size={16} color={todayAssignment?.status === "completed" ? COLORS.mascotGreen : COLORS.primaryOrange} />
-              <Text style={[styles.timerText, todayAssignment?.status === "completed" ? { color: COLORS.mascotGreen } : null]}>
-                {todayAssignment?.status === "completed" ? "Streak secured for today! 🎉" : todayAssignment?.is_rest_day ? "Enjoy your rest day! ❄️" : timeRemaining}
+          <Text style={styles.startStreakTitle}>Ignite the Streak!</Text>
+          <Text style={styles.startStreakText}>The relay streak is currently inactive. Upload a run today to ignite the streak and generate the crew's schedule!</Text>
+        </View>
+      ) : (
+        <TouchableOpacity style={styles.batonCard} activeOpacity={0.8} onPress={() => setWeekModalVisible(true)}>
+          <View style={styles.batonHeader}>
+            <Text style={styles.batonTitle}>Today's Baton Holder</Text>
+            <Text style={styles.viewWeekText}>View Week &gt;</Text>
+          </View>
+
+          <View style={styles.batonMain}>
+            <View style={[styles.largeAvatar, { backgroundColor: todayAssignment?.status === "completed" ? COLORS.mascotGreen : todayAssignment?.is_rest_day ? "#3498db" : COLORS.primaryOrange }]}>
+              <Ionicons name={todayAssignment?.status === "completed" ? "checkmark-circle" : todayAssignment?.is_rest_day ? "snow" : "walk"} size={30} color="#FFF" />
+            </View>
+            <View style={styles.batonInfo}>
+              <Text style={styles.batonName} numberOfLines={1}>
+                {batonHolderNames}
               </Text>
+              <View style={styles.timerRow}>
+                <Ionicons name="time-outline" size={16} color={todayAssignment?.status === "completed" ? COLORS.mascotGreen : COLORS.primaryOrange} />
+                <Text style={[styles.timerText, todayAssignment?.status === "completed" ? { color: COLORS.mascotGreen } : null]}>
+                  {todayAssignment?.status === "completed" ? "Streak secured for today! 🎉" : todayAssignment?.is_rest_day ? "Enjoy your rest day!" : timeRemaining}
+                </Text>
+              </View>
             </View>
           </View>
-        </View>
-      </TouchableOpacity>
+        </TouchableOpacity>
+      )}
 
       {/* WEEKOVERZICHT MODAL */}
       <Modal visible={isWeekModalVisible} animationType="slide" transparent={true} onRequestClose={() => setWeekModalVisible(false)}>
@@ -338,7 +396,6 @@ export default function CrewScreen({ navigation }) {
 
             <ScrollView style={styles.weekList} contentContainerStyle={{ paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
               {weekAssignments.map((day, index) => {
-                // Tijdzone-veilige omzetting van de oprichtingsdatum
                 const getLocalYYYYMMDD = (isoString) => {
                   if (!isoString) return "1970-01-01";
                   const d = new Date(isoString);
@@ -358,45 +415,35 @@ export default function CrewScreen({ navigation }) {
                 const isFirstDayThisWeek = index === 0;
                 const isFirstDayNextWeek = index === 7;
 
-                // --- DE STATUS EN ICOON LOGICA ---
                 let dayStatusColor = COLORS.textMuted;
                 let dayIcon = "ellipse-outline";
                 let lopers = "";
 
                 if (isBeforeCreation) {
-                  // 1. Crew bestond nog niet
                   dayStatusColor = "#475569";
                   dayIcon = "remove-circle-outline";
-                  lopers = "    Crew not formed yet";
+                  lopers = "Crew not formed yet";
                 } else if (day.status === "completed") {
-                  // 2. Goal is complete! Groen vinkje
                   dayStatusColor = COLORS.mascotGreen;
                   dayIcon = "checkmark-circle";
-                  lopers = day.is_rest_day
-                    ? "Rest Day completed! ❄️"
-                    : (day.assigned_users?.map((id) => crewProfiles[id]).join(" & ") || "Goal achieved!");
+                  lopers = day.is_rest_day ? "Rest Day completed!" : day.assigned_users?.map((id) => crewProfilesMap[id]).join(" & ") || "Goal achieved!";
                 } else if (day.status === "failed") {
-                  // 3. Goal is gefaald (rood kruis)
                   dayStatusColor = "#e74c3c";
                   dayIcon = "close-circle";
-                  lopers = day.is_rest_day 
-                    ? "Rest Day" 
-                    : (day.assigned_users?.map((id) => crewProfiles[id]).join(" & ") || "Failed");
+                  lopers = day.is_rest_day ? "Rest Day" : day.assigned_users?.map((id) => crewProfilesMap[id]).join(" & ") || "Failed";
                 } else if (day.status === "saved_by_token") {
-                  // 4. Gered door een nood-token
                   dayStatusColor = COLORS.secondaryYellow;
                   dayIcon = "shield-checkmark";
-                  lopers = "Streak saved! 🛡️";
+                  lopers = "Streak saved!";
                 } else {
-                  // 5. Dag is nog in afwachting (pending)
                   if (day.is_rest_day) {
                     dayStatusColor = "#3498db";
                     dayIcon = "snow";
-                    lopers = "Rest Day ❄️";
+                    lopers = "Rest Day";
                   } else {
                     dayStatusColor = isToday ? COLORS.primaryOrange : COLORS.textMuted;
                     dayIcon = isToday ? "walk" : "ellipse-outline";
-                    lopers = day.assigned_users?.map((id) => crewProfiles[id]).join(" & ") || "No runners";
+                    lopers = day.assigned_users?.map((id) => crewProfilesMap[id]).join(" & ") || "No runners";
                   }
                 }
 
@@ -413,9 +460,7 @@ export default function CrewScreen({ navigation }) {
                         <Ionicons name={dayIcon} size={24} color={dayStatusColor} />
                       </View>
                       <View style={styles.weekNameCol}>
-                        <Text style={[styles.weekRunnerText, isBeforeCreation ? { color: "#475569", fontStyle: "italic" } : null]} numberOfLines={1}>
-                          {lopers}
-                        </Text>
+                        <Text style={[styles.weekRunnerText, isBeforeCreation ? { color: "#475569", fontStyle: "italic" } : null]} numberOfLines={1}>{lopers}</Text>
                       </View>
                       {isToday && !isBeforeCreation && (
                         <View style={styles.todayBadge}>
@@ -479,6 +524,13 @@ export default function CrewScreen({ navigation }) {
             );
           })
         )}
+
+        {/* VIEW MORE BUTTON */}
+        {hasMoreActivities && (
+          <TouchableOpacity style={styles.viewMoreButton} activeOpacity={0.7} onPress={() => setActivitiesPage((prev) => prev + 1)} disabled={isMoreLoading}>
+            {isMoreLoading ? <ActivityIndicator size="small" color={COLORS.secondaryYellow} /> : <Text style={styles.viewMoreText}>View more &gt;</Text>}
+          </TouchableOpacity>
+        )}
       </View>
     </ScrollView>
   );
@@ -492,19 +544,70 @@ const styles = StyleSheet.create({
   settingsButtonRight: { position: "absolute", top: 0, right: 0, padding: 5, zIndex: 10 },
   crewTitle: { fontSize: 36, fontFamily: "Baloo-Bold", color: COLORS.textLight, marginBottom: 10, textTransform: "capitalize" },
   crewMembersContainer: { flexDirection: "row", justifyContent: "center", alignItems: "center" },
-  avatar: { width: 40, height: 40, borderRadius: 20, justifyContent: "center", alignItems: "center", borderWidth: 3, borderColor: COLORS.background },
+  avatar: { width: 40, height: 40, borderRadius: 20, justifyContent: "center", alignItems: "center", borderWidth: 3, borderColor: COLORS.background, overflow: "hidden" },
+  avatarImage: { width: "100%", height: "100%" },
   avatarText: { color: "#FFF", fontSize: 14, fontWeight: "bold" },
-  streakBanner: { flexDirection: "row", backgroundColor: "rgba(231, 84, 56, 0.1)", borderWidth: 1, borderColor: "rgba(231, 84, 56, 0.3)", borderRadius: 16, padding: 15, alignItems: "center", marginBottom: 25 },
-  streakIcon: { marginRight: 15 },
-  streakTextContainer: { flex: 1 },
-  streakTitle: { color: COLORS.primaryOrange, fontFamily: "Inter", fontWeight: "bold", fontSize: 18, marginBottom: 2 },
-  streakSubtitle: { color: COLORS.textLight, fontFamily: "Inter", fontSize: 14 },
+
+  bannerHeader: {
+    marginBottom: 10,
+    paddingHorizontal: 5,
+  },
+  illustratorBannerPlaceholder: {
+    backgroundColor: "#3a3f58",
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 20,
+    height: 140,
+    overflow: 'hidden',
+    flexDirection: 'row', 
+    borderColor: COLORS.secondaryYellow,
+    borderWidth: 3,
+  },
+  bannerTextContainer: {
+    flex: 1,
+    alignItems: 'center',
+    
+  },
+  bannerStreakNumber: { 
+    color: COLORS.primaryOrange, 
+    fontFamily: "Baloo-Bold", 
+    fontSize: 84,
+    lineHeight: 60,
+    paddingTop: 40,
+  },
+  bannerStreakLabel: {
+    color: "#FFF", 
+    fontFamily: "Baloo-Bold", 
+    fontSize: 30, 
+    fontWeight: "bold", 
+    textTransform: 'uppercase', 
+    letterSpacing: 2,
+    marginTop: -30,
+    marginLeft: 10,
+  },
+
+  startStreakCard: { backgroundColor: "rgba(231, 84, 56, 0.1)", borderRadius: 20, padding: 25, marginBottom: 25, alignItems: "center", borderWidth: 1, borderColor: "rgba(231, 84, 56, 0.3)" },
+  rocketCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: COLORS.primaryOrange,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 15,
+    shadowColor: COLORS.primaryOrange,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+  },
+  startStreakTitle: { color: COLORS.primaryOrange, fontFamily: "Baloo-Bold", fontSize: 24, marginBottom: 8 },
+  startStreakText: { color: COLORS.textLight, fontFamily: "Inter", fontSize: 15, textAlign: "center", lineHeight: 22 },
+  viewWeekText: { color: COLORS.secondaryYellow, fontFamily: "Inter", fontSize: 12, fontWeight: "bold" },
   batonCard: { backgroundColor: COLORS.cardBackground, borderRadius: 20, padding: 20, marginBottom: 25, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5, elevation: 5 },
   batonHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 15 },
   batonTitle: { color: COLORS.textMuted, fontFamily: "Inter", fontWeight: "bold", fontSize: 14, textTransform: "uppercase", letterSpacing: 1 },
   batonMain: { flexDirection: "row", alignItems: "center" },
   largeAvatar: { width: 60, height: 60, borderRadius: 30, justifyContent: "center", alignItems: "center", marginRight: 15 },
-  largeAvatarText: { color: "#FFF", fontSize: 24, fontWeight: "bold" },
   batonInfo: { flex: 1 },
   batonName: { color: COLORS.textLight, fontFamily: "Baloo-Bold", fontSize: 24, marginBottom: 4 },
   timerRow: { flexDirection: "row", alignItems: "center" },
@@ -535,53 +638,20 @@ const styles = StyleSheet.create({
   activityMeta: { color: COLORS.textMuted, fontFamily: "Inter", fontSize: 12 },
   activityHighlight: { color: COLORS.secondaryYellow, fontFamily: "Baloo-Bold", fontSize: 16 },
 
-  // Modal & Extra Styles
-  viewWeekText: { color: COLORS.secondaryYellow, fontFamily: "Inter", fontSize: 12, fontWeight: "bold" },
+  viewMoreButton: { padding: 10, alignItems: "center", marginTop: 5, minHeight: 40 },
+  viewMoreText: { color: COLORS.secondaryYellow, fontFamily: "Inter", fontWeight: "bold", fontSize: 14 },
+
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "flex-end" },
   modalContent: { backgroundColor: COLORS.cardBackground, borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 25, maxHeight: "80%" },
   modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 },
   modalTitle: { fontSize: 24, fontFamily: "Baloo-Bold", color: COLORS.textLight },
   weekList: { marginBottom: 20 },
-  weekRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 15,
-  },
-  sectionDivider: {
-    color: COLORS.textLight,
-    fontFamily: "Baloo-Bold",
-    fontSize: 20,
-    marginTop: 25,
-    marginBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.1)",
-    paddingBottom: 5,
-  },
-  standardRow: {
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.05)",
-  },
-  todayRow: {
-    borderWidth: 1.5,
-    borderColor: COLORS.secondaryYellow,
-    borderRadius: 12,
-    backgroundColor: "rgba(249, 212, 35, 0.08)",
-    paddingHorizontal: 15,
-    marginVertical: 6,
-  },
-  todayBadge: {
-    backgroundColor: COLORS.secondaryYellow,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  todayBadgeText: {
-    color: COLORS.background,
-    fontFamily: "Inter",
-    fontSize: 10,
-    fontWeight: "bold",
-    textTransform: "uppercase",
-  },
+  weekRow: { flexDirection: "row", alignItems: "center", paddingVertical: 15 },
+  sectionDivider: { color: COLORS.textLight, fontFamily: "Baloo-Bold", fontSize: 20, marginTop: 25, marginBottom: 10, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.1)", paddingBottom: 5 },
+  standardRow: { borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.05)" },
+  todayRow: { borderWidth: 1.5, borderColor: COLORS.secondaryYellow, borderRadius: 12, backgroundColor: "rgba(249, 212, 35, 0.08)", paddingHorizontal: 15, marginVertical: 6 },
+  todayBadge: { backgroundColor: COLORS.secondaryYellow, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  todayBadgeText: { color: COLORS.background, fontFamily: "Inter", fontSize: 10, fontWeight: "bold", textTransform: "uppercase" },
   weekDayCol: { width: 60 },
   weekDayText: { color: COLORS.textMuted, fontFamily: "Inter", fontWeight: "bold", textTransform: "uppercase" },
   weekIconCol: { width: 40, alignItems: "center" },

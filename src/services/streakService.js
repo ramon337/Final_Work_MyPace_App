@@ -141,6 +141,14 @@ const fillWeek = async (crewId, mondayDate, previousSundayUsers = []) => {
 
 /** --- 2. DE STARTMOTOR (Vul Huidige en Volgende week aan) --- **/
 export const ensureFourteenDaySchedule = async (crewId) => {
+    // 🚀 NIEUW: Check of de streak wel actief is (groter dan 0)
+    const { data: crew } = await supabase.from('crews').select('current_streak').eq('id', crewId).single();
+    
+    if (!crew || crew.current_streak === 0) {
+        console.log("[StreakEngine] Streak is 0. We wachten op de eerste run. Geen planning gegenereerd.");
+        return; // We doen helemaal NIETS!
+    }
+
     const today = new Date();
     const currentMonday = getMonday(today);
     const nextMonday = new Date(currentMonday);
@@ -206,17 +214,57 @@ export const processNachtCheck = async (crewId) => {
             await supabase.from('crew_daily_assignments').update({ status: 'saved_by_token' }).eq('id', record.id);
             await supabase.from('crews').update({ rest_day_tokens: crew.rest_day_tokens - 1 }).eq('id', crewId);
         } else {
+            // 🚀 STREAK BROKEN!
             await supabase.from('crew_daily_assignments').update({ status: 'failed' }).eq('id', record.id);
             await supabase.from('crews').update({ current_streak: 0 }).eq('id', crewId);
+            
+            // 🚀 NIEUW: Wis de planning voor vandaag en de toekomst, zodat we terug in de 'koudestart' fase zitten!
+            const todayStr = toDateString(new Date());
+            await supabase.from('crew_daily_assignments').delete().eq('crew_id', crewId).gte('assignment_date', todayStr);
         }
     }
 };
 
-
 /** --- 5. DE STRAVA VALIDATIE --- **/
 export const checkAndProgressStreak = async (crewId, userId) => {
     const todayStr = toDateString(new Date());
+    const { data: crew } = await supabase.from('crews').select('current_streak').eq('id', crewId).single();
 
+    // 🚀 NIEUWE LOGICA: ALs de streak 0 is, fungeert deze run als de 'igniter'
+    if (crew.current_streak === 0) {
+        
+        // Kijk of er stiekem al een record stond voor vandaag (bijv. van vroeger), zo ja overschrijf, anders maak nieuw
+        const { data: existingToday } = await supabase.from('crew_daily_assignments')
+            .select('id').eq('crew_id', crewId).eq('assignment_date', todayStr).maybeSingle();
+        
+        if (existingToday) {
+            await supabase.from('crew_daily_assignments').update({
+                assigned_users: [userId],
+                completed_users: [userId],
+                is_rest_day: false,
+                status: 'completed'
+            }).eq('id', existingToday.id);
+        } else {
+            await supabase.from('crew_daily_assignments').insert({
+                crew_id: crewId,
+                assignment_date: todayStr,
+                assigned_users: [userId],
+                completed_users: [userId],
+                is_rest_day: false,
+                status: 'completed'
+            });
+        }
+
+        // 2. Zet de streak op 1!
+        await supabase.from('crews').update({ current_streak: 1 }).eq('id', crewId);
+
+        // 3. Nu de streak actief is, genereren we de rest van het rooster (vanaf morgen)
+        await ensureFourteenDaySchedule(crewId);
+
+        return { status: 'streak_started', newStreak: 1 };
+    }
+
+    // --- OUDE LOGICA VOOR ALS DE STREAK AL DRAAIT ---
     const { data: record } = await supabase.from('crew_daily_assignments').select('*')
         .eq('crew_id', crewId).eq('assignment_date', todayStr).maybeSingle();
 
@@ -228,7 +276,6 @@ export const checkAndProgressStreak = async (crewId, userId) => {
 
         if (isDayComplete) {
             await supabase.from('crew_daily_assignments').update({ completed_users: newCompleted, status: 'completed' }).eq('id', record.id);
-            const { data: crew } = await supabase.from('crews').select('current_streak').eq('id', crewId).single();
             const newStreak = (crew.current_streak || 0) + 1;
             await supabase.from('crews').update({ current_streak: newStreak }).eq('id', crewId);
             return { status: 'day_completed', newStreak };

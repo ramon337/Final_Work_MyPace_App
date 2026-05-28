@@ -4,10 +4,10 @@ import { StyleSheet, Text, View, SafeAreaView } from 'react-native';
 import LottieView from 'lottie-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { COLORS } from '../../theme/colors';
-import CustomButton from '../../components/CustomButton'; // Check je eigen pad!
+import CustomButton from '../../components/ui/CustomButton';
 
 // Je animaties
-import cheerAnimation from '../../assets/animations/mascot-cheer.json';
+import cheerAnimation from '../../assets/animations/mascot-cheering.json';
 // import thumbsUpAnimation from '../../assets/animations/mascot-thumbsup.json';
 // import applauseAnimation from '../../assets/animations/mascot-applause.json';
 
@@ -19,14 +19,21 @@ export default function AnimationScreen({ route }) {
 
   useEffect(() => {
     if (!animationData) {
-      navigation.navigate('CrewScreen'); // Fallback als er geen data is
+      navigation.navigate('MainTabs'); 
       return;
     }
 
     const builtSlides = [];
 
     // --- DIA 1: STREAK LOGICA ---
-    if (animationData.streakStatus === 'day_completed') {
+    if (animationData.streakStatus === 'streak_started') {
+      builtSlides.push({
+        title: "🔥 IGNITION!",
+        message: "You started the relay streak! The crew schedule has been generated.",
+        animation: cheerAnimation, 
+        buttonText: "Let's Go!"
+      });
+    } else if (animationData.streakStatus === 'day_completed') {
       builtSlides.push({
         title: "🔥 STREAK UP!",
         message: `Awesome! The relay streak is now at ${animationData.newStreak} days!`,
@@ -77,12 +84,9 @@ export default function AnimationScreen({ route }) {
 
   const handleNext = () => {
     if (currentSlideIndex < slides.length - 1) {
-      // Ga naar de volgende animatie
       setCurrentSlideIndex(currentSlideIndex + 1);
     } else {
-      // Laatste dia bereikt? Ga terug naar de Crew!
-      // (Let op: Zorg dat de naam van dit scherm klopt met jouw navigator)
-      navigation.navigate('CrewScreen'); 
+      navigation.navigate('MainTabs'); // 🚀 Dit brengt je feilloos terug naar je dashboard!
     }
   };
 
@@ -102,6 +106,7 @@ export default function AnimationScreen({ route }) {
             source={currentSlide.animation}
             autoPlay
             loop={true}
+            renderMode="SOFTWARE"
             style={styles.lottie}
           />
         </View>
@@ -130,6 +135,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 20,
+  },
+  buttonContainer: {
+    width: '90%',
   },
   textContainer: {
     alignItems: 'center',
