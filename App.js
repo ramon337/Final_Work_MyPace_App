@@ -19,6 +19,7 @@ import CrewScreen from './src/screens/dashboard/CrewScreen';
 import QuestsScreen from './src/screens/dashboard/QuestsScreen';
 import YouScreen from './src/screens/dashboard/YouScreen';
 import CrewSettingsScreen from './src/screens/dashboard/CrewSettingsScreen';
+import AnimationScreen from './src/screens/dashboard/AnimationScreen';
 
 import StravaSyncScreen from './src/screens/dashboard/StravaSyncScreen';
 
@@ -116,6 +117,7 @@ export default function App() {
             <Stack.Screen name="MainTabs" component={MainTabs} />
             <Stack.Screen name="StravaSync" component={StravaSyncScreen} />
             <Stack.Screen name="CrewSettings" component={CrewSettingsScreen} />
+            <Stack.Screen name="AnimationScreen" component={AnimationScreen} />
           </>
         ) : (
           /* --- NIET INGELOGD --- */

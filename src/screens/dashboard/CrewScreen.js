@@ -219,7 +219,7 @@ export default function CrewScreen({ navigation }) {
         return (
           <Text>
             {name} <Text style={styles.activityAction}>completed a run of </Text>
-            <Text style={styles.activityHighlight}>{item.metadata?.distance_km || 0}km</Text>
+            <Text style={styles.activityHighlight}>{item.metadata?.duration_minutes || 0}min</Text>
           </Text>
         );
       case "member_joined":
