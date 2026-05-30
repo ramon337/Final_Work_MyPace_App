@@ -53,7 +53,7 @@ function MainTabs() {
             // Zo ja, dan kun je hier if(focused) { return <CrewIconSolid /> } doen.
             return <CrewIcon color={color} size={size} />;
             
-          } else if (route.name === 'Quests') {
+          } else if (route.name === 'Crew Quests') {
             return <QuestIcon color={color} size={size} />;
             
           } else if (route.name === 'You') {
@@ -63,7 +63,7 @@ function MainTabs() {
       })}
     >
       <Tab.Screen name="Crew" component={CrewScreen} />
-      <Tab.Screen name="Quests" component={QuestsScreen} />
+      <Tab.Screen name="Crew Quests" component={QuestsScreen} />
       <Tab.Screen name="You" component={YouScreen} />
     </Tab.Navigator>
   );

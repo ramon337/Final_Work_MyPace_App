@@ -127,18 +127,6 @@ export default function AccountSetupScreen({ navigation }) {
           // 1. Maak de gebruiker lid van de nieuwe crew
           await supabase.from("crew_members").insert([{ user_id: userId, crew_id: crewData.id }]);
 
-          // 2. Koppel direct de eerste gezamenlijke Quest aan de Crew
-          await supabase.from("crew_quests").insert([
-            {
-              crew_id: crewData.id,
-              title: "Route 66 Challenge",
-              subtitle: "Run the legendary highway across the US!",
-              target_amount: 3940, 
-              current_progress: 0,
-              type: "minutes",
-            },
-          ]);
-
           console.log("Crew gemaakt, lid geworden en Quest gekoppeld! (Geen herberekening nodig voor nieuwe crew)");
         }
       } else if (selectedCrewAction === "invite" && verifiedCrewId !== null) {
