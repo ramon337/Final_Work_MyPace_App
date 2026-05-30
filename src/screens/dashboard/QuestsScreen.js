@@ -1,20 +1,71 @@
 // src/screens/dashboard/QuestsScreen.js
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, Text, View, ScrollView, ActivityIndicator, TouchableOpacity, Modal } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, ActivityIndicator, TouchableOpacity, Modal, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../theme/colors';
 import { useUser } from '../../context/UserContext';
 import { supabase } from '../../lib/supabase';
 
-// 🚀 JOUW NIEUWE ROADMAP AAN CHALLENGES (Van makkelijk naar extreem)
+// 🚀 ROADMAP MET COVER AFBEELDINGEN (Unsplash placeholders)
+// 🚀 DE NIEUWE GEÜPDATETE ROADMAP MET LOKALE AFBEELDINGEN (Gemeten in Minuten)
 const MASTER_CHALLENGES = [
-  { id: "c1", title: "The Marathon", subtitle: "Run for 42 minutes", target_amount: 42, icon: "footsteps" },
-  { id: "c2", title: "Centurion", subtitle: "Reach 100 minutes of running", target_amount: 100, icon: "shield-checkmark" },
-  { id: "c3", title: "Spartan Endurance", subtitle: "Conquer 250 minutes", target_amount: 250, icon: "bonfire" },
-  { id: "c4", title: "Everest Basecamp", subtitle: "Climb to 1000 minutes", target_amount: 1000, icon: "triangle" },
-  { id: "c5", title: "Route 66", subtitle: "The ultimate 4000 minutes journey", target_amount: 4000, icon: "map" },
+  { 
+    id: "c1", 
+    title: "The Marathon", 
+    subtitle: "Run for 42 minutes to conquer the classic distance", 
+    target_amount: 42, 
+    image: require('../../assets/images/quest-1-image.jpeg') 
+  },
+  { 
+    id: "c2", 
+    title: "Centurion", 
+    subtitle: "Log 100 minutes of running as a crew", 
+    target_amount: 100, 
+    image: require('../../assets/images/quest-2-image.jpeg') 
+  },
+  { 
+    id: "c3", 
+    title: "London to Paris", 
+    subtitle: "Run 342 minutes to virtually cross the channel", 
+    target_amount: 342, 
+    image: require('../../assets/images/quest-3-image.jpeg')
+  },
+  { 
+    id: "c4", 
+    title: "Camino de Santiago", 
+    subtitle: "Conquer the famous route in 790 minutes", 
+    target_amount: 790, 
+    image: require('../../assets/images/quest-4-image.jpeg')
+  },
+  { 
+    id: "c5", 
+    title: "Route 66", 
+    subtitle: "The ultimate 3,940 minutes roadtrip", 
+    target_amount: 3940, 
+    image: require('../../assets/images/quest-5-image.jpeg')
+  },
+  { 
+    id: "c6", 
+    title: "Great Wall of China", 
+    subtitle: "An epic 21,196 minutes expedition", 
+    target_amount: 21196,
+    image: require('../../assets/images/quest-6-image.jpg')
+  },
+  { 
+    id: "c7", 
+    title: "Around the World", 
+    subtitle: "The ultimate boss: 40,075 minutes", 
+    target_amount: 40075,
+    image: require('../../assets/images/quest-7-image.jpg')
+  },
 ];
+
+const getQuestImage = (target) => {
+  const template = MASTER_CHALLENGES.find(q => q.target_amount === target);
+  return template ? template.image : require('../../assets/images/quest-1-image.jpeg');
+};
+
 
 export default function QuestsScreen({ navigation }) {
   const { crewData, loading: contextLoading } = useUser();
@@ -23,8 +74,6 @@ export default function QuestsScreen({ navigation }) {
   const [loadingQuests, setLoadingQuests] = useState(true);
   
   const [isModalVisible, setModalVisible] = useState(false);
-
-  // 🚀 HET SLOT OP DE DEUR: Voorkomt dubbele inserts door de race-condition
   const isInsertingRef = useRef(false);
 
   const fetchQuests = async () => {
@@ -42,24 +91,17 @@ export default function QuestsScreen({ navigation }) {
 
       if (error) throw error;
 
-      // Verdeel ze in actief en voltooid
       const active = data ? data.filter(q => q.current_progress < q.target_amount) : [];
       const completed = data ? data.filter(q => q.current_progress >= q.target_amount) : [];
 
-      // 🚀 ALS ER GEEN ACTIEVE QUEST IS, EN WE ZIJN NIET AL AAN HET INSERTEN...
       if (active.length === 0 && !isInsertingRef.current) {
-        isInsertingRef.current = true; // Doe de deur op slot!
+        isInsertingRef.current = true; 
 
-        // Kijk welke target_amounts we al in de database hebben staan
         const existingTargets = data ? data.map(q => q.target_amount) : [];
-        
-        // Zoek de EERSTE challenge in onze roadmap die nog NIET in de database staat
         const nextQuestTemplate = MASTER_CHALLENGES.find(q => !existingTargets.includes(q.target_amount));
 
         if (nextQuestTemplate) {
-          console.log(`Geen actieve quest. We starten automatisch met: ${nextQuestTemplate.title}`);
-          
-          const { data: newQuest, error: insertError } = await supabase
+          const { data: newQuest } = await supabase
             .from('crew_quests')
             .insert({
               crew_id: crewData.id,
@@ -72,25 +114,23 @@ export default function QuestsScreen({ navigation }) {
             .select();
 
           if (newQuest && newQuest.length > 0) {
-            setActiveQuests([newQuest[0]]); // Zet de nieuwe quest actief in het scherm
+            setActiveQuests([newQuest[0]]); 
             setCompletedQuests(completed);
           }
         } else {
-          // Als de speler Route 66 heeft gehaald en er écht niks meer over is!
           setActiveQuests([]);
           setCompletedQuests(completed);
         }
 
-        isInsertingRef.current = false; // Haal de deur weer van het slot
+        isInsertingRef.current = false; 
       } else {
-        // Normale weergave: er was al gewoon een actieve quest bezig
         setActiveQuests(active);
         setCompletedQuests(completed);
       }
 
     } catch (error) {
       console.error("Fout bij ophalen quests:", error);
-      isInsertingRef.current = false; // Mocht er een error zijn, gooi slot eraf
+      isInsertingRef.current = false; 
     } finally {
       setLoadingQuests(false);
     }
@@ -102,11 +142,8 @@ export default function QuestsScreen({ navigation }) {
     return unsubscribe;
   }, [navigation, crewData]);
 
-  // 🚀 BEREKEN WELKE QUESTS NOG "UPCOMING" ZIJN VOOR DE UI
   const activeAndCompletedTargets = [...activeQuests, ...completedQuests].map(q => q.target_amount);
   const upcomingQuests = MASTER_CHALLENGES.filter(q => !activeAndCompletedTargets.includes(q.target_amount));
-  
-  // Pak alleen de eerste 2 voor de preview op het dashboard
   const previewUpcoming = upcomingQuests.slice(0, 2);
 
   if (contextLoading || loadingQuests) {
@@ -120,7 +157,7 @@ export default function QuestsScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Crew Quests</Text>
+        <Text style={styles.headerTitle}>Quests</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -131,7 +168,6 @@ export default function QuestsScreen({ navigation }) {
           <View style={styles.emptyState}>
             <Ionicons name="map-outline" size={40} color={COLORS.textMuted} />
             <Text style={styles.emptyText}>No active quests right now.</Text>
-            {/* Suggestie als alles leeg is: Start The Marathon! */}
           </View>
         ) : (
           activeQuests.map((quest) => {
@@ -139,7 +175,8 @@ export default function QuestsScreen({ navigation }) {
             return (
               <View key={quest.id} style={styles.questCard}>
                 <View style={styles.questHeader}>
-                  <Ionicons name="map-sharp" size={24} color={COLORS.secondaryYellow} />
+                  {/* 🚀 Active Quest Thumbnail */}
+                  <Image source={getQuestImage(quest.target_amount)} style={styles.activeQuestImage} />
                   <View style={styles.questMeta}>
                     <Text style={styles.questTitle}>{quest.title}</Text>
                     <Text style={styles.questSubtitle}>{quest.subtitle}</Text>
@@ -165,18 +202,19 @@ export default function QuestsScreen({ navigation }) {
         <Text style={[styles.sectionTitle, { marginTop: 10 }]}>Upcoming Quests</Text>
         {previewUpcoming.map(quest => (
           <View key={quest.id} style={styles.lockedQuestCard}>
-            <View style={styles.lockedIconBg}>
-              <Ionicons name={quest.icon} size={24} color={COLORS.textMuted} />
+            <View style={styles.lockedImageContainer}>
+              <Image source={quest.image} style={styles.coverImage} blurRadius={2} />
+              <View style={styles.darkOverlay} />
+              <Ionicons name="lock-closed" size={20} color="#FFF" style={styles.absoluteCenterIcon} />
             </View>
             <View style={styles.lockedQuestInfo}>
               <Text style={styles.lockedQuestTitle}>{quest.title}</Text>
               <Text style={styles.lockedQuestSubtitle}>{quest.subtitle}</Text>
             </View>
-            <Ionicons name="lock-closed" size={20} color={COLORS.textMuted} />
           </View>
         ))}
 
-        {/* 🚀 VIEW ALL BUTTON */}
+        {/* VIEW ALL BUTTON */}
         <TouchableOpacity style={styles.viewAllButton} activeOpacity={0.7} onPress={() => setModalVisible(true)}>
           <Text style={styles.viewAllText}>View all challenges &gt;</Text>
         </TouchableOpacity>
@@ -192,8 +230,12 @@ export default function QuestsScreen({ navigation }) {
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
             {completedQuests.map(quest => (
               <View key={quest.id} style={styles.trophyCard}>
-                <View style={styles.trophyIconBg}>
-                  <Ionicons name="checkmark-circle" size={32} color={COLORS.mascotGreen} />
+                <View style={styles.trophyImageContainer}>
+                  <Image source={getQuestImage(quest.target_amount)} style={styles.coverImage} />
+                  {/* Klein groen vinkje als badge over de foto heen */}
+                  <View style={styles.trophyCheckmarkBadge}>
+                    <Ionicons name="checkmark" size={14} color="#FFF" />
+                  </View>
                 </View>
                 <Text style={styles.trophyTitle} numberOfLines={1}>{quest.title}</Text>
                 <Text style={styles.trophySubtitle}>{quest.target_amount} {quest.type || "min"}</Text>
@@ -203,7 +245,7 @@ export default function QuestsScreen({ navigation }) {
         )}
       </ScrollView>
 
-      {/* 🚀 DE VIEW ALL MODAL */}
+      {/* DE VIEW ALL MODAL */}
       <Modal visible={isModalVisible} animationType="slide" transparent={true} onRequestClose={() => setModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -217,34 +259,37 @@ export default function QuestsScreen({ navigation }) {
 
             <ScrollView contentContainerStyle={{ paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
               {MASTER_CHALLENGES.map((challenge, index) => {
-                // Bepaal de status van de challenge in de pop-up
                 const isCompleted = completedQuests.some(q => q.target_amount === challenge.target_amount);
                 const isActive = activeQuests.some(q => q.target_amount === challenge.target_amount);
                 
                 let cardStyle = styles.roadmapCardLocked;
-                let iconColor = COLORS.textMuted;
-                let iconBg = 'rgba(255,255,255,0.05)';
+                let titleColor = COLORS.textMuted;
+                let overlayColor = 'rgba(0,0,0,0.6)'; // Donker over gelockte items
                 let statusIcon = "lock-closed";
+                let iconColor = "#FFF";
                 
                 if (isCompleted) {
                   cardStyle = styles.roadmapCardCompleted;
-                  iconColor = COLORS.mascotGreen;
-                  iconBg = 'rgba(92, 190, 136, 0.1)';
+                  titleColor = COLORS.mascotGreen;
+                  overlayColor = 'transparent'; // Geen overlay, toon de foto puur!
                   statusIcon = "checkmark-circle";
+                  iconColor = COLORS.mascotGreen;
                 } else if (isActive) {
                   cardStyle = styles.roadmapCardActive;
-                  iconColor = COLORS.secondaryYellow;
-                  iconBg = 'rgba(249, 212, 35, 0.1)';
+                  titleColor = COLORS.secondaryYellow;
+                  overlayColor = 'rgba(249, 212, 35, 0.2)'; // Lichtgele gloed
                   statusIcon = "play-circle";
+                  iconColor = COLORS.secondaryYellow;
                 }
 
                 return (
                   <View key={challenge.id} style={cardStyle}>
-                    <View style={[styles.roadmapIconBg, { backgroundColor: iconBg }]}>
-                      <Ionicons name={challenge.icon} size={24} color={iconColor} />
+                    <View style={styles.lockedImageContainer}>
+                      <Image source={challenge.image} style={styles.coverImage} blurRadius={!isCompleted && !isActive ? 2 : 0} />
+                      <View style={[styles.darkOverlay, { backgroundColor: overlayColor }]} />
                     </View>
                     <View style={styles.roadmapInfo}>
-                      <Text style={[styles.roadmapTitle, isActive && { color: COLORS.secondaryYellow }, isCompleted && { color: COLORS.mascotGreen }]}>
+                      <Text style={[styles.roadmapTitle, { color: titleColor }]}>
                         {challenge.title}
                       </Text>
                       <Text style={styles.roadmapSubtitle}>{challenge.target_amount} minutes</Text>
@@ -274,6 +319,7 @@ const styles = StyleSheet.create({
   // Active Quest
   questCard: { backgroundColor: COLORS.cardBackground, borderRadius: 20, padding: 20, marginBottom: 25 },
   questHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+  activeQuestImage: { width: 60, height: 60, borderRadius: 12, backgroundColor: '#3a3f58' },
   questMeta: { marginLeft: 15, flex: 1 },
   questTitle: { color: COLORS.textLight, fontFamily: 'Baloo-Bold', fontSize: 20, marginBottom: 4 },
   questSubtitle: { color: COLORS.textMuted, fontFamily: 'Inter', fontSize: 14, lineHeight: 20 },
@@ -286,9 +332,12 @@ const styles = StyleSheet.create({
   emptyState: { alignItems: 'center', padding: 20, backgroundColor: 'rgba(255,255,255,0.02)', borderRadius: 16, marginBottom: 25 },
   emptyText: { color: COLORS.textMuted, fontFamily: 'Inter', marginTop: 10, fontSize: 14 },
 
-  // Locked Quests
+  // Locked Quests & Images
   lockedQuestCard: { flexDirection: "row", alignItems: "center", backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: 16, padding: 15, marginBottom: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
-  lockedIconBg: { width: 48, height: 48, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.05)', justifyContent: "center", alignItems: "center", marginRight: 15 },
+  lockedImageContainer: { width: 50, height: 50, borderRadius: 12, overflow: 'hidden', marginRight: 15, position: 'relative' },
+  coverImage: { width: '100%', height: '100%', resizeMode: 'cover' },
+  darkOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.6)' },
+  absoluteCenterIcon: { position: 'absolute', top: '50%', left: '50%', transform: [{ translateX: -10 }, { translateY: -10 }] },
   lockedQuestInfo: { flex: 1 },
   lockedQuestTitle: { color: COLORS.textMuted, fontFamily: "Inter", fontWeight: "bold", fontSize: 16, marginBottom: 2 },
   lockedQuestSubtitle: { color: 'rgba(255,255,255,0.3)', fontFamily: "Inter", fontSize: 13 },
@@ -302,7 +351,8 @@ const styles = StyleSheet.create({
   emptyStateText: { color: COLORS.textMuted, fontFamily: "Inter", textAlign: "center", marginTop: 10, lineHeight: 22 },
   horizontalScroll: { overflow: 'visible' },
   trophyCard: { backgroundColor: COLORS.cardBackground, borderRadius: 16, padding: 15, width: 140, marginRight: 15, alignItems: "center", borderWidth: 1, borderColor: 'rgba(92, 190, 136, 0.3)' },
-  trophyIconBg: { width: 60, height: 60, borderRadius: 30, backgroundColor: 'rgba(92, 190, 136, 0.1)', justifyContent: "center", alignItems: "center", marginBottom: 10 },
+  trophyImageContainer: { width: 60, height: 60, borderRadius: 30, overflow: 'hidden', marginBottom: 10, position: 'relative' },
+  trophyCheckmarkBadge: { position: 'absolute', bottom: 0, right: 0, backgroundColor: COLORS.mascotGreen, width: 20, height: 20, borderRadius: 10, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: COLORS.cardBackground },
   trophyTitle: { color: COLORS.textLight, fontFamily: "Inter", fontWeight: "bold", fontSize: 14, marginBottom: 4, textAlign: "center" },
   trophySubtitle: { color: COLORS.mascotGreen, fontFamily: "Inter", fontSize: 12 },
 
@@ -317,7 +367,6 @@ const styles = StyleSheet.create({
   roadmapCardLocked: { flexDirection: "row", alignItems: "center", backgroundColor: 'rgba(255,255,255,0.02)', borderRadius: 16, padding: 15, marginBottom: 15, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
   roadmapCardActive: { flexDirection: "row", alignItems: "center", backgroundColor: 'rgba(249, 212, 35, 0.05)', borderRadius: 16, padding: 15, marginBottom: 15, borderWidth: 1, borderColor: 'rgba(249, 212, 35, 0.3)' },
   roadmapCardCompleted: { flexDirection: "row", alignItems: "center", backgroundColor: 'rgba(92, 190, 136, 0.05)', borderRadius: 16, padding: 15, marginBottom: 15, borderWidth: 1, borderColor: 'rgba(92, 190, 136, 0.3)' },
-  roadmapIconBg: { width: 50, height: 50, borderRadius: 14, justifyContent: "center", alignItems: "center", marginRight: 15 },
   roadmapInfo: { flex: 1 },
   roadmapTitle: { color: COLORS.textMuted, fontFamily: "Baloo-Bold", fontSize: 18, marginBottom: 2 },
   roadmapSubtitle: { color: 'rgba(255,255,255,0.4)', fontFamily: "Inter", fontSize: 13 },
