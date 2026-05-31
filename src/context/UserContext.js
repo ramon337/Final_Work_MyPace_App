@@ -9,8 +9,6 @@ export const UserProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   const refreshCrewData = async () => {
-    // 💡 DE FIX: Toon alleen de 'harde' loader als we nog helemaal geen data hebben.
-    // Als crewData al gevuld is, doen we een "silent refresh".
     if (!crewData) {
       setLoading(true);
     }
@@ -26,7 +24,8 @@ export const UserProvider = ({ children }) => {
     const fetchCrew = async () => {
       const { data: memberData } = await supabase
         .from('crew_members')
-        .select('crews(id, name, total_minutes, invite_code, current_streak, rest_day_tokens, created_at)')
+        // 🚀 FIX: 'is_public' toegevoegd aan de select query!
+        .select('crews(id, name, total_minutes, invite_code, current_streak, rest_day_tokens, created_at, is_public)')
         .eq('user_id', user.id)
         .single();
       return memberData;
@@ -60,7 +59,7 @@ export const UserProvider = ({ children }) => {
       if (event === 'SIGNED_OUT') {
         setCrewData(null);
       } else if (event === 'SIGNED_IN') {
-        refreshCrewData(); // Haal direct verse data (en toon laadscherm) bij een nieuwe inlog
+        refreshCrewData(); 
       }
     });
 

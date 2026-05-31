@@ -1,6 +1,6 @@
 // src/screens/dashboard/CrewSettingsScreen.js
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, Switch, FlatList, Share, ActivityIndicator, Alert, TextInput } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, Switch, FlatList, Share, ActivityIndicator, Alert, TextInput, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../theme/colors';
@@ -8,18 +8,14 @@ import { useUser } from '../../context/UserContext';
 import { recalculateFutureSchedule } from "../../services/streakService";
 import { supabase } from '../../lib/supabase';
 
-
 export default function CrewSettingsScreen({ navigation }) {
   const { crewData, refreshCrewData } = useUser();
-  const [isPublic, setIsPublic] = useState(false); 
+  const [isPublic, setIsPublic] = useState(crewData?.is_public || false); 
   const [members, setMembers] = useState([]);
   const [loadingMembers, setLoadingMembers] = useState(true);
   const [currentUserId, setCurrentUserId] = useState(null);
   
-  // We houden lokaal bij of de ingelogde user de leider is
   const [isLocalAdmin, setIsLocalAdmin] = useState(false);
-
-  // States voor het bewerken van de crew naam
   const [localCrewName, setLocalCrewName] = useState(crewData?.name || "");
   const [isEditingName, setIsEditingName] = useState(false);
 
@@ -30,7 +26,6 @@ export default function CrewSettingsScreen({ navigation }) {
     if (!crewData?.id) return;
 
     try {
-      // 1. Haal de huidige ingelogde user op
       const { data: { user } } = await supabase.auth.getUser();
       let activeUid = null;
       if (user) {
@@ -38,26 +33,24 @@ export default function CrewSettingsScreen({ navigation }) {
         activeUid = user.id;
       }
 
-      // 2. Haal de crewleden op (zonder te sorteren op created_at!)
+      // 🚀 FIX: Nu selecteren we óók de avatar_url!
       const { data, error } = await supabase
         .from('crew_members')
         .select(`
           user_id,
-          profiles ( display_name )
+          profiles ( display_name, avatar_url )
         `)
         .eq('crew_id', crewData.id);
 
       if (error) console.error("Supabase Error:", error.message);
 
       if (data && data.length > 0) {
-        // 💡 DE WATERDICHTE TRIGGER: De allereerste rij die ooit is aangemaakt is de Oprichter!
         const absoluteLeaderId = data[0].user_id;
         
-        // Als jij de oprichter bent, krijg je per direct admin rechten
         if (activeUid === absoluteLeaderId) {
           setIsLocalAdmin(true);
         } else {
-          setIsLocalAdmin(false); // Zorg dat een 2e lid expliciet géén admin wordt
+          setIsLocalAdmin(false); 
         }
 
         const formattedMembers = data.map(m => {
@@ -69,7 +62,8 @@ export default function CrewSettingsScreen({ navigation }) {
             name: displayName,
             role: isLeader ? 'Leader' : 'Runner', 
             initial: displayName.charAt(0).toUpperCase(),
-            color: isLeader ? COLORS.primaryOrange : COLORS.mascotGreen
+            color: isLeader ? COLORS.primaryOrange : COLORS.mascotGreen,
+            avatarUrl: m.profiles?.avatar_url || null // 🚀 FIX: Sla de URL op in de state
           };
         });
         
@@ -84,6 +78,7 @@ export default function CrewSettingsScreen({ navigation }) {
 
   useEffect(() => {
     fetchRealMembers();
+    setIsPublic(crewData?.is_public || false);
   }, [crewData]);
 
   const askConfirmNameUpdate = () => {
@@ -97,29 +92,15 @@ export default function CrewSettingsScreen({ navigation }) {
       "Confirm Name Change",
       `Are you sure you want to change the crew name to "${localCrewName}"?`,
       [
-        {
-          text: "Cancel",
-          style: "cancel",
-          onPress: () => {
-            setIsEditingName(false);
-            setLocalCrewName(crewData?.name || "");
-          }
-        },
-        {
-          text: "Confirm",
-          onPress: handleUpdateCrewName
-        }
+        { text: "Cancel", style: "cancel", onPress: () => { setIsEditingName(false); setLocalCrewName(crewData?.name || ""); } },
+        { text: "Confirm", onPress: handleUpdateCrewName }
       ]
     );
   };
 
   const handleUpdateCrewName = async () => {
     try {
-      await supabase
-        .from('crews')
-        .update({ name: localCrewName })
-        .eq('id', crewData.id);
-      
+      await supabase.from('crews').update({ name: localCrewName }).eq('id', crewData.id);
       setIsEditingName(false);
       refreshCrewData(); 
     } catch (error) {
@@ -128,17 +109,28 @@ export default function CrewSettingsScreen({ navigation }) {
     }
   };
 
+  const handleTogglePublic = async (newValue) => {
+    setIsPublic(newValue);
+    try {
+      const { error } = await supabase.from('crews').update({ is_public: newValue }).eq('id', crewData.id);
+      if (error) throw error;
+      refreshCrewData(); 
+    } catch (error) {
+      console.error("Fout bij updaten public status:", error.message);
+      Alert.alert("Error", "Could not update public settings.");
+      setIsPublic(!newValue);
+    }
+  };
+
   const handleShare = async () => {
     try {
-      await Share.share({
-        message: `Join my running crew "${crewData?.name}" on MyPace! Use my invite code: ${crewData?.invite_code}`,
-      });
+      await Share.share({ message: `Join my running crew "${crewData?.name}" on MyPace! Use my invite code: ${crewData?.invite_code}` });
     } catch (error) {
       console.error(error);
     }
   };
 
-const handleLeaveCrew = async () => {
+  const handleLeaveCrew = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -146,25 +138,12 @@ const handleLeaveCrew = async () => {
       const myMemberRecord = members.find(m => m.id === user.id);
       const myName = myMemberRecord?.name || "A member";
 
-      // 1. Verwijder jezelf uit de crew_members tabel
       await supabase.from("crew_members").delete().eq("user_id", user.id);
-
-      // 2. Log de actie in de activity feed
-      await supabase.from("crew_activity_log").insert({
-        crew_id: crewData.id,
-        event_type: "member_left",
-        metadata: { ex_member_name: myName }
-      });
-
-      // 3. Herbereken de toekomst voor de overgebleven leden!
+      await supabase.from("crew_activity_log").insert({ crew_id: crewData.id, event_type: "member_left", metadata: { ex_member_name: myName } });
       await recalculateFutureSchedule(crewData.id);
-
-      // 4. Sluit dit settings scherm ONMIDDELLIJK af
+      
       navigation.goBack(); 
-
-      // 5. Maak de lokaal opgeslagen crew leeg (dit triggert de empty states op de onderliggende schermen!)
       refreshCrewData(); 
-
     } catch (error) {
       console.error("Fout bij verlaten:", error);
     }
@@ -177,17 +156,12 @@ const handleLeaveCrew = async () => {
       [
         { text: "Cancel", style: "cancel" },
         { 
-          text: "Remove", 
-          style: "destructive",
+          text: "Remove", style: "destructive",
           onPress: async () => {
             setMembers(members.filter(m => m.id !== userId));
             try {
               await supabase.from('crew_members').delete().eq('user_id', userId).eq('crew_id', crewData.id);
-              await supabase.from('crew_activity_log').insert({
-                crew_id: crewData.id,
-                event_type: 'member_left',
-                metadata: { ex_member_name: name }
-              });
+              await supabase.from('crew_activity_log').insert({ crew_id: crewData.id, event_type: 'member_left', metadata: { ex_member_name: name } });
               await recalculateFutureSchedule(crewData.id);
               fetchRealMembers(); 
             } catch (error) {
@@ -201,7 +175,6 @@ const handleLeaveCrew = async () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* HEADER */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={28} color={COLORS.textLight} />
@@ -210,7 +183,6 @@ const handleLeaveCrew = async () => {
         <View style={{ width: 28 }} /> 
       </View>
 
-      {/* CREW NAAM EDIT SECTIE */}
       <View style={styles.crewNameSection}>
         {isEditingName && isLocalAdmin ? (
           <View style={styles.editNameRow}>
@@ -235,23 +207,16 @@ const handleLeaveCrew = async () => {
         )}
       </View>
 
-      {/* PUBLIC TOGGLE */}
       {isLocalAdmin && !isCrewFull && (
         <View style={styles.settingCard}>
           <View style={styles.settingText}>
             <Text style={styles.settingTitle}>Open to Public</Text>
             <Text style={styles.settingSub}>Allow new runners to find and join this crew without an invite code.</Text>
           </View>
-          <Switch
-            trackColor={{ false: '#3a3f58', true: 'rgba(92, 190, 136, 0.5)' }}
-            thumbColor={isPublic ? COLORS.mascotGreen : '#f4f3f4'}
-            onValueChange={() => setIsPublic(!isPublic)}
-            value={isPublic}
-          />
+          <Switch trackColor={{ false: '#3a3f58', true: 'rgba(92, 190, 136, 0.5)' }} thumbColor={isPublic ? COLORS.mascotGreen : '#f4f3f4'} onValueChange={handleTogglePublic} value={isPublic} />
         </View>
       )}
 
-      {/* LEDENLIJST */}
       <View style={styles.listHeader}>
         <Text style={styles.listTitle}>Crew Members</Text>
         <Text style={styles.memberCount}>{members.length}/{MAX_MEMBERS}</Text>
@@ -265,9 +230,15 @@ const handleLeaveCrew = async () => {
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
             <View style={styles.memberItem}>
-              <View style={[styles.avatar, { backgroundColor: item.color }]}>
-                <Text style={styles.avatarText}>{item.initial}</Text>
+              {/* 🚀 FIX: Render de image als die er is, anders de fallback cirkel */}
+              <View style={[styles.avatar, { backgroundColor: item.color, overflow: 'hidden' }]}>
+                {item.avatarUrl ? (
+                  <Image source={{ uri: item.avatarUrl }} style={{ width: '100%', height: '100%' }} />
+                ) : (
+                  <Text style={styles.avatarText}>{item.initial}</Text>
+                )}
               </View>
+              
               <View style={styles.memberInfo}>
                 <Text style={styles.memberName}>
                   {item.name} {item.id === currentUserId && "(You)"}
@@ -284,13 +255,13 @@ const handleLeaveCrew = async () => {
           )}
         />
       )}
+      
       <View style={styles.leaveBtn}>
-                  <TouchableOpacity onPress={handleLeaveCrew} style={styles.leaveButton}>
-                    <Text style={styles.leaveText}>Leave Crew</Text>
-                  </TouchableOpacity>
-              </View>
+        <TouchableOpacity onPress={handleLeaveCrew} style={styles.leaveButton}>
+          <Text style={styles.leaveText}>Leave Crew</Text>
+        </TouchableOpacity>
+      </View>
 
-      {/* INLINE INVITE BAR ONDERAAN */}
       {!isCrewFull && crewData?.invite_code && (
         <View style={styles.cleanCodeContainer}>
           <Text style={styles.cleanCodeText}>

@@ -1,6 +1,6 @@
 // src/screens/onboarding/AccountSetupScreen.js
-import React, { useState } from "react";
-import { StyleSheet, Text, View, TouchableOpacity, TextInput, Image } from "react-native";
+import React, { useState, useEffect } from "react";
+import { StyleSheet, Text, View, TouchableOpacity, TextInput, Image, FlatList, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "../../theme/colors";
 import CustomButton from "../../components/ui/CustomButton";
@@ -8,6 +8,8 @@ import ProgressBar from "../../components/ui/ProgressBar";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "../../lib/supabase";
 import { recalculateFutureSchedule } from "../../services/streakService";
+import * as ImagePicker from "expo-image-picker";
+import { KeyboardAvoidingView, Platform, ScrollView } from "react-native";
 
 export default function AccountSetupScreen({ navigation }) {
   const [currentStep, setCurrentStep] = useState(1);
@@ -23,13 +25,67 @@ export default function AccountSetupScreen({ navigation }) {
   const [inviteCode, setInviteCode] = useState("");
   const [avatarUri, setAvatarUri] = useState(null);
 
-  // DE MAGIE: We hebben intern 6 schermen, maar tonen er maar 5 aan de gebruiker
+  const [publicCrews, setPublicCrews] = useState([]);
+  const [filteredCrews, setFilteredCrews] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedPublicCrewId, setSelectedPublicCrewId] = useState(null);
+  const [loadingCrews, setLoadingCrews] = useState(false);
+
   const internalSteps = 6;
   const displayTotalSteps = 5;
-
-  // We berekenen welk nummer de progressiebalk moet tonen
-  // Als we NA het buddy scherm (stap 4) zijn, trekken we er 1 af voor de UI
   const displayStep = currentStep > 4 ? currentStep - 1 : currentStep;
+
+  useEffect(() => {
+    if (currentStep === 6 && selectedCrewAction === "find") {
+      fetchPublicCrews();
+    }
+  }, [currentStep, selectedCrewAction]);
+
+  const fetchPublicCrews = async () => {
+    setLoadingCrews(true);
+    try {
+      const { data, error } = await supabase.from("crews").select("id, name, crew_members(user_id)").eq("is_public", true);
+
+      if (error) throw error;
+
+      if (data) {
+        const available = data
+          .filter((crew) => crew.crew_members.length < 5)
+          .map((crew) => ({
+            id: crew.id,
+            name: crew.name,
+            memberCount: crew.crew_members.length,
+          }));
+        setPublicCrews(available);
+        setFilteredCrews(available);
+      }
+    } catch (error) {
+      console.error("Fout bij ophalen openbare crews:", error.message);
+    } finally {
+      setLoadingCrews(false);
+    }
+  };
+
+  useEffect(() => {
+    if (searchQuery.trim() === "") {
+      setFilteredCrews(publicCrews);
+    } else {
+      setFilteredCrews(publicCrews.filter((c) => c.name.toLowerCase().includes(searchQuery.toLowerCase())));
+    }
+  }, [searchQuery, publicCrews]);
+
+  const pickImage = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.4,
+    });
+
+    if (!result.canceled) {
+      setAvatarUri(result.assets[0].uri);
+    }
+  };
 
   const handleBack = () => {
     if (currentStep > 1) {
@@ -60,12 +116,9 @@ export default function AccountSetupScreen({ navigation }) {
     if (currentStep < internalSteps) {
       setCurrentStep(currentStep + 1);
     } else {
-      console.log("Setup Compleet! Account opslaan in database...");
       const success = await handleSignUp();
       if (success) {
         navigation.navigate("MainTabs");
-      } else {
-        console.log("Er ging iets mis bij Supabase.");
       }
     }
   };
@@ -77,26 +130,22 @@ export default function AccountSetupScreen({ navigation }) {
   };
 
   const handleSignUp = async () => {
-    console.log("Bezig met account aanmaken...");
-    setStepSixError(""); // Reset eventuele oude foutmeldingen
+    setStepSixError("");
 
     const cleanCode = inviteCode.trim().toUpperCase();
     let verifiedCrewId = null;
 
-    // --- 1. VOORAF CHECKEN (De Invite Code) ---
     if (selectedCrewAction === "invite" && cleanCode !== "") {
-      console.log("Controleren of invite code bestaat:", cleanCode);
-
       const { data: crewCheck } = await supabase.from("crews").select("id").eq("invite_code", cleanCode).maybeSingle();
-
       if (!crewCheck) {
         setStepSixError("We couldn't find a Crew with that code. Please check and try again.");
-        return false; // Stop de hele boel! Er is nog géén account aangemaakt.
+        return false;
       }
-      verifiedCrewId = crewCheck.id; // Bewaar het ID voor straks
+      verifiedCrewId = crewCheck.id;
+    } else if (selectedCrewAction === "find") {
+      verifiedCrewId = selectedPublicCrewId;
     }
 
-    // --- 2. MAAK HET ACCOUNT AAN ---
     const { data: authData, error: authError } = await supabase.auth.signUp({ email, password });
     if (authError) {
       console.error("Fout bij registreren:", authError.message);
@@ -105,12 +154,48 @@ export default function AccountSetupScreen({ navigation }) {
 
     if (authData.user) {
       const userId = authData.user.id;
+      let finalAvatarUrl = null;
 
-      // --- 3. MAAK HET PROFIEL ---
-      const { error: profileError } = await supabase.from("profiles").insert([{ id: userId, display_name: name, weekly_goal: selectedGoal }]);
+      // 🚀 DE FIX: Betrouwbare FormData upload methode, identiek aan ProfileScreen
+      if (avatarUri) {
+        try {
+          const fileExt = avatarUri.split(".").pop() || "jpg";
+          const fileName = `${userId}-${Date.now()}.${fileExt}`;
+          const formData = new FormData();
+
+          formData.append("files", {
+            uri: avatarUri,
+            name: fileName,
+            type: `image/${fileExt}`,
+          });
+
+          const { error: uploadError } = await supabase.storage.from("avatars").upload(fileName, formData, {
+            contentType: `image/${fileExt}`,
+            upsert: true,
+          });
+
+          if (!uploadError) {
+            const { data: publicUrlData } = supabase.storage.from("avatars").getPublicUrl(fileName);
+            finalAvatarUrl = publicUrlData.publicUrl;
+          } else {
+            console.error("Supabase Storage Error:", uploadError.message);
+          }
+        } catch (error) {
+          console.error("Avatar upload faalde:", error);
+        }
+      }
+
+      const { error: profileError } = await supabase.from("profiles").insert([
+        {
+          id: userId,
+          display_name: name,
+          weekly_goal: selectedGoal,
+          avatar_url: finalAvatarUrl,
+        },
+      ]);
+
       if (profileError) return false;
 
-      // --- 4. KOPPEL DE CREW EN MAAK QUEST AAN ---
       if (selectedCrewAction === "create" && crewName !== "") {
         const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
         const randomCode = Array.from({ length: 6 })
@@ -119,45 +204,43 @@ export default function AccountSetupScreen({ navigation }) {
 
         const { data: crewData } = await supabase
           .from("crews")
-          .insert([{ name: crewName, invite_code: randomCode }])
+          .insert([{ name: crewName, invite_code: randomCode, is_public: false }])
           .select()
           .single();
 
         if (crewData) {
-          // 1. Maak de gebruiker lid van de nieuwe crew
           await supabase.from("crew_members").insert([{ user_id: userId, crew_id: crewData.id }]);
-
-          console.log("Crew gemaakt, lid geworden en Quest gekoppeld! (Geen herberekening nodig voor nieuwe crew)");
         }
-      } else if (selectedCrewAction === "invite" && verifiedCrewId !== null) {
-        
-        // 1. Voeg toe aan bestaande crew
+      } else if ((selectedCrewAction === "invite" || selectedCrewAction === "find") && verifiedCrewId !== null) {
         await supabase.from("crew_members").insert([{ user_id: userId, crew_id: verifiedCrewId }]);
-        
-        // 2. Log in de activity feed
+
         await supabase.from("crew_activity_log").insert({
           crew_id: verifiedCrewId,
           user_id: userId,
           event_type: "member_joined",
         });
 
-        // 3. 🚀 DE TRIGGER: Herbereken de kalender vanaf morgen voor deze crew!
         await recalculateFutureSchedule(verifiedCrewId);
-
-        console.log("Succesvol aangesloten bij crew via code en toekomstige kalender herberekend!");
       }
 
-      return true; // Alles is 100% gelukt!
+      return true;
     }
   };
 
   const renderFooterButtons = () => {
-    const showContinue = currentStep === 1 || (currentStep === 2 && avatarUri !== null) || (currentStep === 3 && selectedGoal !== null) || currentStep === 4 || (currentStep === 5 && selectedCrewAction !== null) || currentStep === 6;
+    let canFinishStep6 = false;
+    if (currentStep === 6) {
+      if (selectedCrewAction === "invite" && inviteCode.trim() !== "") canFinishStep6 = true;
+      if (selectedCrewAction === "create" && crewName.trim() !== "") canFinishStep6 = true;
+      if (selectedCrewAction === "find" && selectedPublicCrewId !== null) canFinishStep6 = true;
+    }
+
+    const showContinue =
+      currentStep === 1 || (currentStep === 2 && avatarUri !== null) || (currentStep === 3 && selectedGoal !== null) || currentStep === 4 || (currentStep === 5 && selectedCrewAction !== null) || (currentStep === 6 && canFinishStep6);
 
     return (
       <View style={styles.footerWrapper}>
         <View style={styles.primaryButtonSlot}>{showContinue && <CustomButton title={currentStep === internalSteps ? "Finish Setup" : "Continue"} type="primary" onPress={handleNext} />}</View>
-
         <View style={styles.skipButtonSlot}>
           {(currentStep === 2 || currentStep === 3) && (
             <TouchableOpacity onPress={handleSkip} style={styles.skipButton}>
@@ -197,12 +280,17 @@ export default function AccountSetupScreen({ navigation }) {
             <Text style={styles.stepTitle}>Pick a profile picture</Text>
             <Text style={styles.bodyText}>Show your crew who they are running with! You can always change this later.</Text>
             <View style={styles.avatarContainer}>
-              <TouchableOpacity
-                style={[styles.avatarPlaceholder, avatarUri && { backgroundColor: "rgba(92, 190, 136, 0.2)", borderColor: COLORS.mascotGreen, borderWidth: 2 }]}
-                activeOpacity={0.8}
-                onPress={() => setAvatarUri(avatarUri ? null : "simulated_image_url")}
-              >
-                {avatarUri ? <Ionicons name="checkmark" size={48} color={COLORS.mascotGreen} /> : <Ionicons name="camera" size={48} color={COLORS.textDark} />}
+              <TouchableOpacity style={[styles.avatarPlaceholder, avatarUri && { backgroundColor: "transparent", borderColor: COLORS.mascotGreen, borderWidth: 2 }]} activeOpacity={0.8} onPress={pickImage}>
+                {avatarUri ? (
+                  <>
+                    <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
+                    <TouchableOpacity style={styles.removeAvatarBadge} onPress={() => setAvatarUri(null)} activeOpacity={0.8}>
+                      <Ionicons name="trash" size={18} color="#FFF" />
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <Ionicons name="camera" size={48} color={COLORS.textDark} />
+                )}
                 {!avatarUri && (
                   <View style={styles.plusBadge}>
                     <Ionicons name="add" size={20} color={COLORS.background} />
@@ -260,30 +348,49 @@ export default function AccountSetupScreen({ navigation }) {
         );
       case 6:
         return (
-          <View style={styles.content}>
+          <View style={[styles.content, { flex: 1 }]}>
             {selectedCrewAction === "invite" && (
               <>
                 <Text style={styles.stepTitle}>Enter your code</Text>
-
-                {/* NIEUW: De rode foutmelding als de code niet klopt */}
                 {stepSixError !== "" && (
                   <View style={styles.errorBox}>
                     <Ionicons name="warning-outline" size={20} color="#FF6B6B" />
                     <Text style={styles.errorText}>{stepSixError}</Text>
                   </View>
                 )}
-
                 <Text style={styles.bodyText}>Paste the invite code you received from your friend below.</Text>
                 <TextInput style={styles.input} placeholder="e.g. MYPACE-1234" placeholderTextColor="#999999" autoCapitalize="characters" value={inviteCode} onChangeText={setInviteCode} />
               </>
             )}
+
             {selectedCrewAction === "find" && (
-              <>
+              <View style={{ flex: 1, paddingBottom: 20 }}>
                 <Text style={styles.stepTitle}>Find a Crew</Text>
                 <Text style={styles.bodyText}>Search for local running groups in your area.</Text>
-                <TextInput style={styles.input} placeholder="Search city or group name..." placeholderTextColor="#999999" />
-              </>
+                <TextInput style={styles.input} placeholder="Search group name..." placeholderTextColor="#999999" value={searchQuery} onChangeText={setSearchQuery} />
+
+                {loadingCrews ? (
+                  <ActivityIndicator color={COLORS.primaryOrange} style={{ marginTop: 20 }} />
+                ) : filteredCrews.length === 0 ? (
+                  <Text style={[styles.bodyText, { textAlign: "center", marginTop: 20 }]}>No public crews found.</Text>
+                ) : (
+                  <FlatList
+                    data={filteredCrews}
+                    keyExtractor={(item) => item.id}
+                    showsVerticalScrollIndicator={false}
+                    renderItem={({ item }) => (
+                      <TouchableOpacity style={[styles.crewCard, selectedPublicCrewId === item.id && styles.boxSelected]} onPress={() => setSelectedPublicCrewId(item.id)}>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                          <Text style={[styles.crewCardText, selectedPublicCrewId === item.id && styles.textSelected]}>{item.name}</Text>
+                          <Text style={{ color: COLORS.textMuted, fontFamily: "Inter" }}>{item.memberCount}/5 Members</Text>
+                        </View>
+                      </TouchableOpacity>
+                    )}
+                  />
+                )}
+              </View>
             )}
+
             {selectedCrewAction === "create" && (
               <>
                 <Text style={styles.stepTitle}>Name your Crew</Text>
@@ -300,30 +407,39 @@ export default function AccountSetupScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* DE CINEMATIC BREAK: Verberg de topbar op stap 4 */}
       <View style={styles.topBar}>
         <TouchableOpacity style={styles.backButton} onPress={handleBack}>
           <Ionicons name="arrow-back" size={28} color={COLORS.textLight} />
         </TouchableOpacity>
 
-        {currentStep !== 4 ? (
-          <ProgressBar currentStep={displayStep} totalSteps={displayTotalSteps} />
-        ) : (
-          /* Een lege View die de ruimte van de ProgressBar inneemt zodat de back-button links blijft staan */
-          <View style={{ flex: 1 }} />
-        )}
+        {currentStep !== 4 ? <ProgressBar currentStep={displayStep} totalSteps={displayTotalSteps} /> : <View style={{ flex: 1 }} />}
       </View>
 
-      <View style={styles.dynamicContainer}>{renderStepContent()}</View>
+      <KeyboardAvoidingView style={styles.dynamicContainer} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+        <ScrollView
+          contentContainerStyle={{ flexGrow: 1, paddingBottom: 130 }} // 🚀 Extra padding zodat je onder de knop door kunt scrollen
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {renderStepContent()}
+        </ScrollView>
+      </KeyboardAvoidingView>
 
-      <View style={styles.buttonContainer}>{renderFooterButtons()}</View>
+      {/* 🚀 De knoppen staan nu buiten de Keyboard view en blijven strak onderaan staan */}
+      {currentStep !== 4 && <View style={styles.fixedButtonContainer}>{renderFooterButtons()}</View>}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background, alignItems: "center" },
-  topBar: { flexDirection: "row", alignItems: "center", width: "90%", marginTop: 10, marginBottom: 30 },
+  topBar: { 
+    flexDirection: "row", 
+    alignItems: "center", 
+    width: "90%", 
+    marginTop: 10, 
+    marginBottom: 10
+  },
   backButton: { padding: 10, marginLeft: -10 },
   dynamicContainer: { flex: 1, width: "90%" },
   content: { width: "100%" },
@@ -334,6 +450,7 @@ const styles = StyleSheet.create({
   buttonContainer: { width: "90%", paddingBottom: 0, alignItems: "center" },
   avatarContainer: { alignItems: "center", marginTop: 40 },
   avatarPlaceholder: { width: 140, height: 140, borderRadius: 70, backgroundColor: COLORS.textLight, justifyContent: "center", alignItems: "center", position: "relative" },
+  avatarImage: { width: 140, height: 140, borderRadius: 70 },
   plusBadge: { position: "absolute", bottom: 5, right: 5, backgroundColor: COLORS.primaryOrange, width: 36, height: 36, borderRadius: 18, justifyContent: "center", alignItems: "center", borderWidth: 3, borderColor: COLORS.background },
   uploadText: { marginTop: 16, fontFamily: "Inter", fontSize: 16, fontWeight: "600", color: COLORS.primaryOrange },
   optionsRow: { flexDirection: "row", justifyContent: "space-between", width: "100%", marginTop: 10 },
@@ -342,6 +459,7 @@ const styles = StyleSheet.create({
   crewCard: { width: "100%", backgroundColor: COLORS.cardBackground, paddingVertical: 20, paddingHorizontal: 20, borderRadius: 20, marginBottom: 15, borderWidth: 2, borderColor: "transparent" },
   crewCardText: { fontSize: 16, fontFamily: "Inter", fontWeight: "600", color: COLORS.textLight },
   boxSelected: { borderColor: COLORS.secondaryYellow, backgroundColor: COLORS.selected },
+  textSelected: { color: COLORS.secondaryYellow },
   footerWrapper: { width: "100%", alignItems: "center" },
   primaryButtonSlot: { width: "100%", minHeight: 60, justifyContent: "center" },
   skipButtonSlot: { height: 40, justifyContent: "center", marginTop: 10 },
@@ -364,4 +482,13 @@ const styles = StyleSheet.create({
   },
   speechTextLarge: { color: COLORS.textLight, fontFamily: "Inter", fontSize: 18, lineHeight: 28, textAlign: "center" },
   largeBuddyContainer: { width: 200, height: 200, justifyContent: "center", alignItems: "center" },
+  removeAvatarBadge: { position: "absolute", bottom: 0, right: 0, backgroundColor: "#FF6B6B", width: 36, height: 36, borderRadius: 18, justifyContent: "center", alignItems: "center", borderWidth: 3, borderColor: COLORS.background },
+  fixedButtonContainer: {
+    position: "absolute",
+    bottom: 20,
+    width: "90%",
+    alignItems: "center",
+    backgroundColor: COLORS.background, // 🚀 Zorgt dat de tekst netjes achter de knop verdwijnt en er niet doorheen schijnt
+    paddingTop: 10,
+  },
 });

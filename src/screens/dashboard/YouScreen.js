@@ -1,3 +1,4 @@
+// src/screens/dashboard/ProfileScreen.js
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, Image, ActivityIndicator, Alert, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -19,7 +20,7 @@ export default function ProfileScreen() {
     totalRuns: 0,
     highestStreak: 0,
     crewName: "No Crew Yet",
-    weekOverview: [] // 🚀 NIEUW: Array om de weekplanning in op te slaan
+    weekOverview: [] 
   });
 
   const fetchProfileData = async () => {
@@ -54,7 +55,7 @@ export default function ProfileScreen() {
       // 3. Live statistieken berekenen uit de logs
       let liveMinutes = 0;
       let liveRuns = 0;
-      let myWeek = []; // Variabele voor de kalender
+      let myWeek = []; 
 
       if (crewId) {
         // --- Statistieken ---
@@ -70,7 +71,7 @@ export default function ProfileScreen() {
           liveMinutes = userLogs.reduce((total, log) => total + (log.metadata?.duration_minutes || 0), 0);
         }
 
-        // --- 🚀 NIEUW: Persoonlijke Weekplanning Ophalen ---
+        // --- Persoonlijke Weekplanning Ophalen ---
         const getLocalYYYYMMDD = (d) => {
           const offset = d.getTimezoneOffset() * 60000;
           return new Date(d - offset).toISOString().split('T')[0];
@@ -121,7 +122,7 @@ export default function ProfileScreen() {
           totalRuns: liveRuns,
           highestStreak: liveRuns > 0 ? 1 : 0,
           crewName: crewName,
-          weekOverview: myWeek // Koppel hem aan de state!
+          weekOverview: myWeek 
         });
       }
     } catch (error) {
@@ -135,7 +136,6 @@ export default function ProfileScreen() {
     fetchProfileData();
   }, []);
 
-  // 🚀 PROFIELFOTO UPLOAD VIA FORMDATA
   const pickAndUploadImage = async () => {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -197,7 +197,6 @@ export default function ProfileScreen() {
     }
   };
 
-  // 🚀 WEEKLY GOAL ALERT
   const handleEditGoal = () => {
     Alert.alert(
       "Set Weekly Goal",
@@ -255,10 +254,18 @@ export default function ProfileScreen() {
         <View style={styles.avatarSection}>
           <TouchableOpacity onPress={pickAndUploadImage} disabled={uploading} style={styles.avatarWrapper}>
             {profile.avatarUrl ? (
-              <Image source={{ uri: profile.avatarUrl }} style={styles.avatarImage} />
+              <Image 
+                source={{ uri: profile.avatarUrl }} 
+                style={styles.avatarImage} 
+                // 🚀 FIX: Als de URL kapot is of de bucket niet public is, wist hij de link lokaal
+                onError={() => setProfile(prev => ({ ...prev, avatarUrl: null }))}
+              />
             ) : (
               <View style={styles.avatarFallback}>
-                <Text style={styles.avatarFallbackText}>{profile.displayName.charAt(0).toUpperCase()}</Text>
+                {/* 🚀 FIX: Bulletproof check zodat charAt(0) nooit crasht */}
+                <Text style={styles.avatarFallbackText}>
+                  {profile.displayName ? profile.displayName.charAt(0).toUpperCase() : "?"}
+                </Text>
               </View>
             )}
             <View style={styles.editCameraBadge}>
@@ -295,7 +302,7 @@ export default function ProfileScreen() {
           </Text>
         </View>
 
-        {/* 🚀 VERNIEUWDE: THIS WEEK PLANNING */}
+        {/* THIS WEEK PLANNING */}
         <View style={styles.card}>
           <View style={styles.titleWithIcon}>
             <Ionicons name="calendar-outline" size={20} color={COLORS.mascotGreen} />
@@ -305,16 +312,13 @@ export default function ProfileScreen() {
           {profile.weekOverview && profile.weekOverview.length > 0 ? (
             <View style={styles.weekOverviewRow}>
               {profile.weekOverview.map((day, index) => {
-                // Standaard: niet ingepland (subtiel minnetje)
                 let iconName = "remove";
                 let iconColor = "rgba(255,255,255,0.1)";
 
-                // Is gelopen? (Oranje loper!)
                 if (day.isCompleted) {
                   iconName = "walk";
                   iconColor = COLORS.primaryOrange;
                 } 
-                // Moet nog lopen? (Grijze loper!)
                 else if (day.isAssigned) {
                   iconName = "walk";
                   iconColor = COLORS.textMuted;
@@ -421,8 +425,6 @@ const styles = StyleSheet.create({
   badgeLabel: { color: COLORS.textLight, fontFamily: 'Inter', fontSize: 12, fontWeight: '500', textAlign: 'center' },
   logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 35, paddingVertical: 12, borderRadius: 12, backgroundColor: 'rgba(255, 107, 107, 0.08)', borderWidth: 1, borderColor: 'rgba(255, 107, 107, 0.15)' },
   logoutText: { color: '#FF6B6B', fontFamily: 'Inter', fontWeight: 'bold', fontSize: 15, marginLeft: 8 },
-  
-  // 🚀 NIEUWE STYLES VOOR DE WEEKPLANNING
   weekOverviewRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 },
   dayCol: { alignItems: 'center' },
   dayLabel: { color: COLORS.textMuted, fontFamily: 'Inter', fontSize: 12, marginBottom: 8, textTransform: 'uppercase' },
