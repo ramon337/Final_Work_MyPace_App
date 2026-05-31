@@ -1,6 +1,6 @@
 // src/screens/main/CrewScreen.js
-import React, { useState, useEffect } from "react";
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator, Image, Modal, ImageBackground } from "react-native";
+import React, { useState, useEffect, useRef } from "react";
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator, Image, Modal, ImageBackground, Animated } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context'; // Gelinkt aan je vorige fix!
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "../../theme/colors";
@@ -18,9 +18,9 @@ const stravaEndpoints = {
 };
 
 export default function CrewScreen({ navigation }) {
+  const streakAnimation = useRef(new Animated.Value(1)).current;
   // --- 1. USER CONTEXT & STATES ---
   const { crewData, loading: userLoading, refreshCrewData } = useUser();
-
   // Activity log states
   const [activities, setActivities] = useState([]);
   
@@ -49,6 +49,15 @@ export default function CrewScreen({ navigation }) {
       setIsFirstLoad(false);
     }
   }, [userLoading]);
+
+    useEffect(() => {
+    if (crewData?.current_streak) {
+      Animated.sequence([
+        Animated.timing(streakAnimation, { toValue: 1.2, duration: 200, useNativeDriver: true }),
+        Animated.spring(streakAnimation, { toValue: 1, friction: 3, useNativeDriver: true })
+      ]).start();
+    }
+  }, [crewData?.current_streak]);
 
   // --- 2. DE COUNTDOWN TIMER ---
   useEffect(() => {
@@ -373,11 +382,18 @@ export default function CrewScreen({ navigation }) {
         <View style={{ flex: 1 }} /> 
 
         <View style={styles.bannerTextContainer}>
-          <Text style={styles.bannerStreakNumber}>{crewData?.current_streak || 0}</Text>
-          <Text style={styles.bannerStreakLabel}>
-            {crewData?.current_streak === 1 ? "Day" : "Days"}
-          </Text>
-        </View>
+  {/* We wrappen het getal in een Animated.Text */}
+  <Animated.Text style={[
+    styles.bannerStreakNumber, 
+    { transform: [{ scale: streakAnimation }] } // De bounce-schaal
+  ]}>
+    {crewData?.current_streak || 0}
+  </Animated.Text>
+  
+  <Text style={styles.bannerStreakLabel}>
+    {crewData?.current_streak === 1 ? "Day" : "Days"}
+  </Text>
+</View>
       </ImageBackground>
 
       {/* CONDITIONELE WEERGAVE OP BASIS VAN DE STREAK */}
