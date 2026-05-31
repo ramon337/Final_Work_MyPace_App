@@ -143,28 +143,28 @@ const handleLeaveCrew = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Zoek jouw eigen naam op uit de lokaal geladen members list (die heb je al!)
       const myMemberRecord = members.find(m => m.id === user.id);
       const myName = myMemberRecord?.name || "A member";
 
       // 1. Verwijder jezelf uit de crew_members tabel
       await supabase.from("crew_members").delete().eq("user_id", user.id);
 
-      // 2. Log de actie in de activity feed, nu met de juiste, gevonden naam
+      // 2. Log de actie in de activity feed
       await supabase.from("crew_activity_log").insert({
         crew_id: crewData.id,
         event_type: "member_left",
         metadata: { ex_member_name: myName }
       });
 
-      // 3. 🚀 DE LOGICA: Herbereken de toekomst voor de overgebleven leden!
+      // 3. Herbereken de toekomst voor de overgebleven leden!
       await recalculateFutureSchedule(crewData.id);
 
-      // 4. Forceer de Context om de Crew leeg te maken in het geheugen!
+      // 4. Sluit dit settings scherm ONMIDDELLIJK af
+      navigation.goBack(); 
+
+      // 5. Maak de lokaal opgeslagen crew leeg (dit triggert de empty states op de onderliggende schermen!)
       refreshCrewData(); 
 
-      // 5. Navigeer terug naar het start/onboarding scherm
-      navigation.navigate("AccountSetup");
     } catch (error) {
       console.error("Fout bij verlaten:", error);
     }

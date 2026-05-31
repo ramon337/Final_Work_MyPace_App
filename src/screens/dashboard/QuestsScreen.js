@@ -7,8 +7,6 @@ import { COLORS } from '../../theme/colors';
 import { useUser } from '../../context/UserContext';
 import { supabase } from '../../lib/supabase';
 
-// 🚀 ROADMAP MET COVER AFBEELDINGEN (Unsplash placeholders)
-// 🚀 DE NIEUWE GEÜPDATETE ROADMAP MET LOKALE AFBEELDINGEN (Gemeten in Minuten)
 const MASTER_CHALLENGES = [
   { 
     id: "c1", 
@@ -146,7 +144,37 @@ export default function QuestsScreen({ navigation }) {
   const upcomingQuests = MASTER_CHALLENGES.filter(q => !activeAndCompletedTargets.includes(q.target_amount));
   const previewUpcoming = upcomingQuests.slice(0, 2);
 
-  if (contextLoading || loadingQuests) {
+  // A. Eerst checken of de usercontext nog laadt
+  if (contextLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={COLORS.primaryOrange} />
+      </View>
+    );
+  }
+
+  // B. 🚀 NIEUW: EMPTY STATE ALS DE USER GEEN CREW HEEFT
+  if (!crewData || !crewData.id) {
+    return (
+      <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center', padding: 30 }]}>
+        <Ionicons name="map-outline" size={100} color={COLORS.textMuted} />
+        <Text style={{ color: COLORS.textLight, fontFamily: 'Baloo-Bold', fontSize: 32, marginTop: 20, marginBottom: 10, textAlign: 'center' }}>No Quests Yet</Text>
+        <Text style={{ color: COLORS.textMuted, fontFamily: 'Inter', fontSize: 16, textAlign: 'center', lineHeight: 24, marginBottom: 40 }}>
+          You need to be part of a crew to unlock epic running challenges like The Marathon or Route 66.
+        </Text>
+        <TouchableOpacity 
+          style={styles.viewAllButton} 
+          activeOpacity={0.8} 
+          onPress={() => navigation.getParent()?.navigate("AccountSetup") || navigation.navigate("AccountSetup")}
+        >
+          <Text style={[styles.viewAllText, { fontSize: 18 }]}>Join or Create a Crew</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
+
+  // C. Als hij wel in een crew zit, maar de quests nog laden
+  if (loadingQuests) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={COLORS.primaryOrange} />

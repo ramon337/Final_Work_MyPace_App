@@ -1,7 +1,7 @@
 // src/screens/main/CrewScreen.js
 import React, { useState, useEffect } from "react";
-// 🚀 FIX: ImageBackground toegevoegd aan de imports!
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator, Image, Modal, ImageBackground } from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context'; // Gelinkt aan je vorige fix!
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "../../theme/colors";
 import * as WebBrowser from "expo-web-browser";
@@ -31,16 +31,24 @@ export default function CrewScreen({ navigation }) {
   const [isMoreLoading, setIsMoreLoading] = useState(false); 
 
   // Streak Engine states
-  const [scheduleLoading, setScheduleLoading] = useState(true);
+  // 🚀 FIX: Standaard op false gezet zodat hij nooit uit het niets de UI blokkeert
+  const [scheduleLoading, setScheduleLoading] = useState(false);
   const [weekAssignments, setWeekAssignments] = useState([]);
   const [todayAssignment, setTodayAssignment] = useState(null);
   const [batonHolderNames, setBatonHolderNames] = useState("");
   const [timeRemaining, setTimeRemaining] = useState("");
   const [isWeekModalVisible, setWeekModalVisible] = useState(false);
+  const [isFirstLoad, setIsFirstLoad] = useState(true);
   
   // Crew Profiles voor avatars
   const [crewProfilesMap, setCrewProfilesMap] = useState({});
   const [crewMembersList, setCrewMembersList] = useState([]);
+
+    useEffect(() => {
+    if (!userLoading) {
+      setIsFirstLoad(false);
+    }
+  }, [userLoading]);
 
   // --- 2. DE COUNTDOWN TIMER ---
   useEffect(() => {
@@ -109,7 +117,10 @@ export default function CrewScreen({ navigation }) {
       return;
     }
     try {
-      setScheduleLoading(true);
+      // 🚀 FIX: Alleen laadstatus aanzetten als we nóg helemaal geen data hebben (eerste opstart)
+      if (weekAssignments.length === 0) {
+        setScheduleLoading(true);
+      }
 
       await processNachtCheck(crewData.id);
       await ensureFourteenDaySchedule(crewData.id);
@@ -292,11 +303,35 @@ export default function CrewScreen({ navigation }) {
 
   // --- 5. UI RENDER ---
 
-  if ((userLoading && !crewData) || (scheduleLoading && weekAssignments.length === 0)) {
+  // A. Toon het laadscherm UITSLUITEND bij de allereerste opstart.
+  if (isFirstLoad) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={COLORS.primaryOrange} />
       </View>
+    );
+  }
+
+  // B. EMPTY STATE ALS DE USER GEEN CREW HEEFT
+  if (!crewData || !crewData.id) {
+    return (
+      <SafeAreaView style={styles.emptyCrewContainer}>
+        <View style={styles.emptyCrewContent}>
+          <Ionicons name="people-circle-outline" size={100} color={COLORS.textMuted} />
+          <Text style={styles.emptyCrewTitle}>You're flying solo!</Text>
+          <Text style={styles.emptyCrewText}>
+            Running is better together. Join an existing crew or start your own to unlock the relay streak and epic quests.
+          </Text>
+
+          <TouchableOpacity 
+            style={styles.primaryButton} 
+            activeOpacity={0.8} 
+            onPress={() => navigation.getParent()?.navigate("AccountSetup") || navigation.navigate("AccountSetup")}
+          >
+            <Text style={styles.primaryButtonText}>Join or Create a Crew</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
     );
   }
 
@@ -330,16 +365,13 @@ export default function CrewScreen({ navigation }) {
         <Text style={styles.sectionTitle}>Relay Streak</Text>
       </View>
       
-      {/* Check goed of dit pad klopt in jouw mappenstructuur! */}
       <ImageBackground 
         source={require('../../assets/images/streak-banner.png')} 
         style={styles.illustratorBannerPlaceholder}
         imageStyle={{ borderRadius: 16 }}
       >
-        {/* Linkerkant (leeglaten zodat de illustratie van de mascotte hier zichtbaar is) */}
         <View style={{ flex: 1 }} /> 
 
-        {/* Rechterkant (Groot het getal en 'Days') */}
         <View style={styles.bannerTextContainer}>
           <Text style={styles.bannerStreakNumber}>{crewData?.current_streak || 0}</Text>
           <Text style={styles.bannerStreakLabel}>
@@ -560,29 +592,30 @@ const styles = StyleSheet.create({
     height: 140,
     overflow: 'hidden',
     flexDirection: 'row', 
-    borderColor: COLORS.secondaryYellow,
+    borderColor: "#3a3f58",
     borderWidth: 3,
   },
   bannerTextContainer: {
     flex: 1,
     alignItems: 'center',
-    
+    flexDirection: 'row',
+    marginLeft: 10,
   },
   bannerStreakNumber: { 
-    color: COLORS.primaryOrange, 
+    color: COLORS.textLight, 
     fontFamily: "Baloo-Bold", 
-    fontSize: 84,
+    fontSize: 65,
     lineHeight: 60,
     paddingTop: 40,
   },
   bannerStreakLabel: {
     color: "#FFF", 
     fontFamily: "Baloo-Bold", 
-    fontSize: 30, 
+    fontSize: 40, 
     fontWeight: "bold", 
     textTransform: 'uppercase', 
     letterSpacing: 2,
-    marginTop: -30,
+    marginTop: 17,
     marginLeft: 10,
   },
 
@@ -657,4 +690,12 @@ const styles = StyleSheet.create({
   weekIconCol: { width: 40, alignItems: "center" },
   weekNameCol: { flex: 1, paddingLeft: 10 },
   weekRunnerText: { color: COLORS.textLight, fontFamily: "Inter", fontSize: 16, fontWeight: "600" },
+  
+  // --- EMPTY STATE STYLES ---
+  emptyCrewContainer: { flex: 1, backgroundColor: COLORS.background },
+  emptyCrewContent: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 30 },
+  emptyCrewTitle: { color: COLORS.textLight, fontFamily: 'Baloo-Bold', fontSize: 32, marginTop: 20, marginBottom: 10, textAlign: 'center' },
+  emptyCrewText: { color: COLORS.textMuted, fontFamily: 'Inter', fontSize: 16, textAlign: 'center', lineHeight: 24, marginBottom: 40 },
+  primaryButton: { backgroundColor: COLORS.primaryOrange, paddingVertical: 16, paddingHorizontal: 30, borderRadius: 16, width: '100%', alignItems: 'center', shadowColor: COLORS.primaryOrange, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 5 },
+  primaryButtonText: { color: "#FFF", fontFamily: "Inter", fontWeight: "bold", fontSize: 18 },
 });
