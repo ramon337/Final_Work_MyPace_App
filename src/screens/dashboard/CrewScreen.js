@@ -92,18 +92,13 @@ export default function CrewScreen({ navigation }) {
       const offset = new Date().getTimezoneOffset() * 60000;
       const todayStr = new Date(new Date() - offset).toISOString().split("T")[0];
 
-      // 🚀 TIJDELIJKE TEST-MODUS: we kijken naar vandaag in plaats van gisteren
-      const yesterdayStr = todayStr;
-
-      // We dwingen de check om ALTIJD 'true' te zijn, alsof er gisteren een token is gebruikt
-      if (true) {
-        /*const yesterday = new Date(new Date() - offset);
+        const yesterday = new Date(new Date() - offset);
       yesterday.setDate(yesterday.getDate() - 1);
       const yesterdayStr = yesterday.toISOString().split("T")[0];
 
       const yesterdayAssignment = weekAssignments.find((a) => a.assignment_date === yesterdayStr);
 
-      if (yesterdayAssignment && yesterdayAssignment.status === "saved_by_token") {*/
+      if (yesterdayAssignment && yesterdayAssignment.status === "saved_by_token") {
         const storageKey = `@token_seen_${crewData.id}_${yesterdayStr}`;
         const hasSeen = await AsyncStorage.getItem(storageKey);
 

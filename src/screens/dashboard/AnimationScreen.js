@@ -178,6 +178,7 @@ export default function AnimationScreen({ route }) {
         toValue: 1,
         friction: 6,
         tension: 40,
+        delay: 800,
         useNativeDriver: true,
       }).start();
     }
@@ -286,10 +287,11 @@ const styles = StyleSheet.create({
   message: { color: COLORS.textLight, fontFamily: "Inter", fontSize: 18, textAlign: "center", lineHeight: 26, paddingHorizontal: 15 },
   streakIconAbsolute: { position: 'absolute', right: -45, width: 30, height: 30 },
   
-  streakBox: { alignItems: "center", marginVertical: 10 },
+  streakBox: { alignItems: "center", marginVertical: 10, minWidth: 120},
   streakNumberContainer: { height: 100, justifyContent: "center", alignItems: "center", overflow: "hidden", paddingTop: 10 },
-  streakNumber: { color: COLORS.textLight, fontFamily: "Baloo-Bold", fontSize: 80, lineHeight: 100, includeFontPadding: false },
-  streakLabel: { color: COLORS.textMuted, fontFamily: "Inter", fontSize: 20, fontWeight: "bold", letterSpacing: 2 },
+  streakNumber: { color: COLORS.textLight, fontFamily: "Baloo-Bold", fontSize: 80, lineHeight: 100, includeFontPadding: false, textAlign: 'center', paddingHorizontal: 15 },
+  streakLabel: { color: COLORS.textMuted, fontFamily: "Inter", fontSize: 20, fontWeight: "bold", letterSpacing: 2, textAlign: 'center',
+    paddingHorizontal: 15  },
 
   mediaContainer: { flex: 1, width: "100%", justifyContent: "center", alignItems: "center" },
   lottie: { width: 400, height: 400 },

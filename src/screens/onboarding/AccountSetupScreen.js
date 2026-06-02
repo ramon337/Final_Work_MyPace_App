@@ -1,6 +1,6 @@
 // src/screens/onboarding/AccountSetupScreen.js
 import React, { useState, useEffect } from "react";
-import { StyleSheet, Text, View, TouchableOpacity, TextInput, Image, FlatList, ActivityIndicator } from "react-native";
+import { StyleSheet, Text, View, TouchableOpacity, TextInput, Image, FlatList, ActivityIndicator, Modal } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "../../theme/colors";
 import CustomButton from "../../components/ui/CustomButton";
@@ -30,6 +30,9 @@ export default function AccountSetupScreen({ navigation }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedPublicCrewId, setSelectedPublicCrewId] = useState(null);
   const [loadingCrews, setLoadingCrews] = useState(false);
+  
+  // 🚀 State voor de waarschuwing popup
+  const [showWarningModal, setShowWarningModal] = useState(false);
 
   const internalSteps = 6;
   const displayTotalSteps = 5;
@@ -126,6 +129,13 @@ export default function AccountSetupScreen({ navigation }) {
   const handleSkip = () => {
     if (currentStep === 2) setAvatarUri(null);
     if (currentStep === 3) setSelectedGoal(null);
+    
+    // 🚀 Als ze skippen bij de crew-fase (stap 5 of 6), toon de modal in plaats van direct doorgaan
+    if (currentStep === 5 || currentStep === 6) {
+      setShowWarningModal(true);
+      return;
+    }
+    
     setCurrentStep(currentStep + 1);
   };
 
@@ -156,7 +166,6 @@ export default function AccountSetupScreen({ navigation }) {
       const userId = authData.user.id;
       let finalAvatarUrl = null;
 
-      // 🚀 DE FIX: Betrouwbare FormData upload methode, identiek aan ProfileScreen
       if (avatarUri) {
         try {
           const fileExt = avatarUri.split(".").pop() || "jpg";
@@ -242,7 +251,8 @@ export default function AccountSetupScreen({ navigation }) {
       <View style={styles.footerWrapper}>
         <View style={styles.primaryButtonSlot}>{showContinue && <CustomButton title={currentStep === internalSteps ? "Finish Setup" : "Continue"} type="primary" onPress={handleNext} />}</View>
         <View style={styles.skipButtonSlot}>
-          {(currentStep === 2 || currentStep === 3) && (
+          {/* 🚀 Skip for now knop beschikbaar gemaakt voor case 5 en 6 */}
+          {(currentStep === 2 || currentStep === 3 || currentStep === 5 || currentStep === 6) && (
             <TouchableOpacity onPress={handleSkip} style={styles.skipButton}>
               <Text style={styles.skipText}>Skip for now</Text>
             </TouchableOpacity>
@@ -317,16 +327,17 @@ export default function AccountSetupScreen({ navigation }) {
         );
       case 4:
         return (
+          // 🚀 VERNIEUWD DESIGN: MeetBuddyScreen stijl voor Case 4 (Buddy Intro)
           <View style={[styles.content, styles.buddyScreenContainer]}>
-            <View style={styles.speechBubbleLarge}>
-              <Text style={styles.speechTextLarge}>
-                Hi <Text style={{ color: COLORS.primaryOrange, fontFamily: "Baloo-Bold", fontSize: 20 }}>{firstName}</Text>, enough about you now!
+            <View style={styles.speechBubbleCardSetup}>
+              <Text style={styles.bodyTextBubble}>
+                Hi <Text style={{ color: COLORS.primaryOrange, fontFamily: "Baloo-Bold", fontSize: 18 }}>{firstName}</Text>, enough about you now!
                 {"\n\n"}
-                In MyPace it's all about motivation. Let's join a crew so you can achieve goals together.
+                In MyPace it's all about teamwork and motivation. Let's join a crew so you can achieve goals together!
               </Text>
             </View>
-            <View style={styles.largeBuddyContainer}>
-              <Image source={require("../../assets/images/mascot.png")} style={{ height: 260, width: 250, marginTop: 100 }} />
+            <View style={styles.imageSmallContainerSetup}>
+              <Image source={require("../../assets/images/mascot.png")} style={styles.lottieSmallSetup} />
             </View>
           </View>
         );
@@ -422,7 +433,7 @@ export default function AccountSetupScreen({ navigation }) {
 
       <KeyboardAvoidingView style={styles.dynamicContainer} behavior={Platform.OS === "ios" ? "padding" : "height"}>
         <ScrollView
-          contentContainerStyle={{ flexGrow: 1, paddingBottom: 130 }} // 🚀 Extra padding zodat je onder de knop door kunt scrollen
+          contentContainerStyle={{ flexGrow: 1, paddingBottom: 130 }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
@@ -431,6 +442,49 @@ export default function AccountSetupScreen({ navigation }) {
       </KeyboardAvoidingView>
 
       <View style={styles.fixedButtonContainer}>{renderFooterButtons()}</View>
+
+      {/* 🚀 DE VERKORTE WAARSCHUWINGSMODAL */}
+      <Modal visible={showWarningModal} animationType="fade" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Ionicons name="people-outline" size={60} color={COLORS.primaryOrange} style={{ marginBottom: 15 }} />
+            
+            <Text style={styles.modalBody}>
+              In this app everything revolves around teamwork. To make good use of this app you will have to join a crew.
+            </Text>
+            
+            <View style={styles.modalButtonContainer}>
+              <TouchableOpacity style={styles.modalPrimaryButton} onPress={() => setShowWarningModal(false)}>
+                <Text style={styles.modalPrimaryButtonText}>Let's find a crew</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                      style={styles.modalSecondaryButton}
+                      onPress={async () => {
+                        setShowWarningModal(false);
+                        
+                        // 🚀 1. We maken het account EERST aan in Supabase (zonder crew)
+                        const success = await handleSignUp();
+                        
+                        if (success) {
+                          // 🚀 2. Als je app automatisch naar het hoofdscherm wisselt 
+                          // bij een succesvolle login (Supabase auth state), is navigeren
+                          // hier niet eens meer nodig!
+                          try {
+                            navigation.navigate("MainTabs"); // Werkt dit niet of geeft dit dezelfde fout? Haal deze regel dan simpelweg weg!
+                          } catch (e) {
+                            console.log("Navigatie afgehandeld door Auth State");
+                          }
+                        }
+                      }}
+                    >
+                      <Text style={styles.modalSecondaryButtonText}>Skip anyway</Text>
+                    </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -471,28 +525,31 @@ const styles = StyleSheet.create({
   skipText: { fontSize: 16, fontFamily: "Inter", fontWeight: "600", color: COLORS.secondaryYellow, textDecorationLine: "underline" },
   errorBox: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(255, 107, 107, 0.1)", padding: 12, borderRadius: 8, borderWidth: 1, borderColor: "#FF6B6B", marginBottom: 15 },
   errorText: { color: "#FF6B6B", fontFamily: "Inter", marginLeft: 8, fontSize: 14 },
-  buddyScreenContainer: { alignItems: "center", justifyContent: "center", flex: 1, marginTop: -100 },
-  speechBubbleLarge: {
-    backgroundColor: COLORS.cardBackground,
-    padding: 25,
-    borderRadius: 24,
-    borderBottomRightRadius: 4,
-    marginBottom: 30,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 5,
-    elevation: 4,
-  },
-  speechTextLarge: { color: COLORS.textLight, fontFamily: "Inter", fontSize: 18, lineHeight: 28, textAlign: "center" },
-  largeBuddyContainer: { width: 200, height: 200, justifyContent: "center", alignItems: "center" },
   removeAvatarBadge: { position: "absolute", bottom: 0, right: 0, backgroundColor: "#FF6B6B", width: 36, height: 36, borderRadius: 18, justifyContent: "center", alignItems: "center", borderWidth: 3, borderColor: COLORS.background },
+  
+  // 🚀 NIEUWE STYLES VOOR CASE 4 (BUDDY)
+  buddyScreenContainer: { flex: 1, justifyContent: "center", marginTop: 20 },
+  speechBubbleCardSetup: { backgroundColor: COLORS.cardBackground, padding: 24, borderRadius: 20, borderBottomLeftRadius: 4, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)', width: '100%', marginBottom: 20 },
+  bodyTextBubble: { fontSize: 16, fontFamily: "Inter", color: COLORS.textLight, lineHeight: 24, textAlign: "left" },
+  imageSmallContainerSetup: { width: "100%", alignItems: "flex-start", paddingLeft: 10 },
+  lottieSmallSetup: { width: 230, height: 230, resizeMode: "contain" },
+  
   fixedButtonContainer: {
     position: "absolute",
     bottom: 20,
     width: "90%",
     alignItems: "center",
-    backgroundColor: COLORS.background, // 🚀 Zorgt dat de tekst netjes achter de knop verdwijnt en er niet doorheen schijnt
+    backgroundColor: COLORS.background, 
     paddingTop: 10,
   },
+
+  // 🚀 MODAL STYLES
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'center', alignItems: 'center' },
+  modalContent: { backgroundColor: COLORS.cardBackground, width: '85%', borderRadius: 24, padding: 25, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  modalBody: { fontSize: 16, fontFamily: 'Inter', color: COLORS.textLight, textAlign: 'center', lineHeight: 24, marginBottom: 25 },
+  modalButtonContainer: { width: '100%' },
+  modalPrimaryButton: { backgroundColor: COLORS.primaryOrange, paddingVertical: 14, borderRadius: 12, alignItems: 'center', marginBottom: 10 },
+  modalPrimaryButtonText: { color: '#FFF', fontFamily: 'Inter', fontWeight: 'bold', fontSize: 16 },
+  modalSecondaryButton: { paddingVertical: 12, alignItems: 'center' },
+  modalSecondaryButtonText: { color: COLORS.textMuted, fontFamily: 'Inter', fontSize: 14, fontWeight: '600' }
 });
