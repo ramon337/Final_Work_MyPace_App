@@ -374,19 +374,24 @@ export default function AccountSetupScreen({ navigation }) {
                 ) : filteredCrews.length === 0 ? (
                   <Text style={[styles.bodyText, { textAlign: "center", marginTop: 20 }]}>No public crews found.</Text>
                 ) : (
-                  <FlatList
-                    data={filteredCrews}
-                    keyExtractor={(item) => item.id}
-                    showsVerticalScrollIndicator={false}
-                    renderItem={({ item }) => (
-                      <TouchableOpacity style={[styles.crewCard, selectedPublicCrewId === item.id && styles.boxSelected]} onPress={() => setSelectedPublicCrewId(item.id)}>
-                        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                          <Text style={[styles.crewCardText, selectedPublicCrewId === item.id && styles.textSelected]}>{item.name}</Text>
-                          <Text style={{ color: COLORS.textMuted, fontFamily: "Inter" }}>{item.memberCount}/5 Members</Text>
-                        </View>
-                      </TouchableOpacity>
-                    )}
-                  />
+                  <View>
+                  {filteredCrews.map((item) => (
+                    <TouchableOpacity 
+                      key={item.id}
+                      style={[styles.crewCard, selectedPublicCrewId === item.id && styles.boxSelected]} 
+                      onPress={() => setSelectedPublicCrewId(item.id)}
+                    >
+                      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                        <Text style={[styles.crewCardText, selectedPublicCrewId === item.id && styles.textSelected]}>
+                          {item.name}
+                        </Text>
+                        <Text style={{ color: COLORS.textMuted, fontFamily: "Inter" }}>
+                          {item.memberCount}/5 Members
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
                 )}
               </View>
             )}
@@ -425,20 +430,19 @@ export default function AccountSetupScreen({ navigation }) {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* 🚀 De knoppen staan nu buiten de Keyboard view en blijven strak onderaan staan */}
-      {currentStep !== 4 && <View style={styles.fixedButtonContainer}>{renderFooterButtons()}</View>}
+      <View style={styles.fixedButtonContainer}>{renderFooterButtons()}</View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background, alignItems: "center" },
-  topBar: { 
-    flexDirection: "row", 
-    alignItems: "center", 
-    width: "90%", 
-    marginTop: 10, 
-    marginBottom: 10
+  topBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    width: "90%",
+    marginTop: 10,
+    marginBottom: 10,
   },
   backButton: { padding: 10, marginLeft: -10 },
   dynamicContainer: { flex: 1, width: "90%" },
