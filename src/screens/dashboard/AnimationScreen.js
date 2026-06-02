@@ -78,8 +78,11 @@ export default function AnimationScreen({ route }) {
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
   const [slides, setSlides] = useState([]);
 
-  // 🚀 Nieuwe animatie waarde voor het rollende getal (van 0 naar 1)
+  // Animatie waarde voor het rollende getal (van 0 naar 1)
   const slideAnim = useRef(new Animated.Value(0)).current;
+  
+  // 🚀 NIEUW: Animatie waarde voor de vallende medaille (start ver buiten beeld)
+  const badgeDropAnim = useRef(new Animated.Value(-800)).current;
 
   // --- 1. Bouw de slides ---
   useEffect(() => {
@@ -103,7 +106,7 @@ export default function AnimationScreen({ route }) {
       });
     } else if (animationData.streakStatus === "day_completed") {
       builtSlides.push({
-        title: "Relay Streak", // 🚀 Titel aangepast!
+        title: "Relay Streak",
         message: "Great work! You've kept the relay alive.",
         animation: cheerAnimation,
         buttonText: "Epic!",
@@ -146,25 +149,57 @@ export default function AnimationScreen({ route }) {
       });
     }
 
+    // 🚀 NIEUW: BADGE SLIDES (First Run)
+    if (animationData.badgeUnlocked === 'first_run') {
+      
+      // Slide 1: Mascotte juicht
+      builtSlides.push({
+        title: "Incredible! 🎉",
+        message: "Great job, you completed your very first run! Welcome to the runner's club.",
+        animation: cheerAnimation,
+        buttonText: "Continue",
+        isQuest: false,
+        isBadge: false
+      });
+
+      // Slide 2: Medaille valt in beeld
+      builtSlides.push({
+        title: "Achievement Unlocked",
+        message: "You earned the 'First Run' badge! Check it out in your Trophy Room.",
+        buttonText: "Awesome!",
+        isQuest: false,
+        isBadge: true,
+        badgeImage: require('../../assets/images/badge-first-run.png') // <-- Zorg dat deze file bestaat!
+      });
+    }
+
     setSlides(builtSlides);
   }, [animationData]);
 
-  // --- 2. Start Lottie & Slotmachine-animatie bij een nieuwe slide ---
+  // --- 2. Start Lottie & Animaties bij een nieuwe slide ---
   useEffect(() => {
     // Start de lottie animatie
     const timer = setTimeout(() => {
       if (animationRef.current) animationRef.current.play();
     }, 150);
 
-    // 🚀 Start de Rol/Slide animatie als dit een Streak slide is
+    // Start de Rol/Slide animatie als dit een Streak slide is
     if (slides[currentSlideIndex]?.isStreakUpdate) {
-      slideAnim.setValue(0); // Reset de animatie eerst
-
+      slideAnim.setValue(0);
       Animated.spring(slideAnim, {
         toValue: 1,
         friction: 6,
         tension: 40,
-        useNativeDriver: true, // Native driver voor super soepele 60fps animatie
+        useNativeDriver: true,
+      }).start();
+    }
+    if (slides[currentSlideIndex]?.isBadge) {
+      badgeDropAnim.setValue(-800); // Reset naar bovenkant scherm
+      Animated.spring(badgeDropAnim, {
+        toValue: 0, // Val naar het midden
+        friction: 5, // Laat hem een beetje stuiteren
+        tension: 40,
+        useNativeDriver: true,
       }).start();
     }
 
@@ -187,17 +222,15 @@ export default function AnimationScreen({ route }) {
     <SafeAreaView style={styles.container}>
       <View style={styles.contentContainer}>
         <View style={styles.textContainer}>
-          {/* 👇 Nieuwe wrapper voor de titel en het icoon samen */}
+          
           <View style={styles.titleWrapper}>
             <Text style={styles.title}>{currentSlide.title}</Text>
-
             {currentSlide.isStreakUpdate && <Image source={require("../../assets/images/streak-icon.png")} style={styles.streakIconAbsolute} />}
           </View>
-          {/* 🚀 Het nieuwe slotmachine effect voor het Streak getal */}
+          
           {currentSlide.isStreakUpdate ? (
             <View style={styles.streakBox}>
               <View style={styles.streakNumberContainer}>
-                {/* HET OUDE GETAL (Valt naar onder weg en verdwijnt) */}
                 <Animated.Text
                   style={[
                     styles.streakNumber,
@@ -211,7 +244,6 @@ export default function AnimationScreen({ route }) {
                   {Math.max(0, currentSlide.streakValue - 1)}
                 </Animated.Text>
 
-                {/* HET NIEUWE GETAL (Komt van bovenaf de plek innemen) */}
                 <Animated.Text
                   style={[
                     styles.streakNumber,
@@ -237,7 +269,12 @@ export default function AnimationScreen({ route }) {
               <Image source={currentSlide.questImage} style={styles.questCover} />
               <View style={styles.imageOverlay} />
             </View>
+          ) : currentSlide.isBadge ? (
+            <Animated.View style={[styles.badgeImageWrapper, { transform: [{ translateY: badgeDropAnim }] }]}>
+              <Image source={currentSlide.badgeImage} style={styles.badgeImageContent} />
+            </Animated.View>
           ) : (
+            // Standaard Lottie Mascot
             <LottieView ref={animationRef} key={currentSlideIndex} source={currentSlide.animation} autoPlay={false} loop={true} renderMode="SOFTWARE" style={styles.lottie} />
           )}
         </View>
@@ -256,40 +293,14 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   contentContainer: { flex: 1, width: "100%", justifyContent: "space-between", alignItems: "center", padding: 20 },
   textContainer: { alignItems: "center", marginTop: 40 },
-  title: { 
-    color: COLORS.primaryOrange, 
-    fontFamily: 'Baloo-Bold', 
-    fontSize: 36, 
-    textAlign: 'center', 
-  },
-  titleWrapper: { 
-    position: 'relative', // Belangrijk! Zorgt dat 'absolute' binnen dit blokje blijft
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 10,
-  },
+  title: { color: COLORS.primaryOrange, fontFamily: 'Baloo-Bold', fontSize: 36, textAlign: 'center' },
+  titleWrapper: { position: 'relative', alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
   message: { color: COLORS.textLight, fontFamily: "Inter", fontSize: 18, textAlign: "center", lineHeight: 26, paddingHorizontal: 15 },
-  streakIconAbsolute: { 
-    position: 'absolute',
-    right: -45, // Schuift het icoon precies buiten de tekst naar rechts (pas dit aan als je meer/minder ruimte wil)
-    width: 30, 
-    height: 30, 
-  },
+  streakIconAbsolute: { position: 'absolute', right: -45, width: 30, height: 30 },
+  
   streakBox: { alignItems: "center", marginVertical: 10 },
-  streakNumberContainer: {
-    height: 100, // Zorgt dat de container niet springt
-    justifyContent: "center",
-    alignItems: "center",
-    overflow: "hidden", // Maskeert de nummers die buiten de box vallen
-    paddingTop: 10, // Extra ademruimte bovenin
-  },
-  streakNumber: {
-    color: COLORS.textLight,
-    fontFamily: "Baloo-Bold",
-    fontSize: 80,
-    lineHeight: 100, // 🚀 Verhoogd van 85 naar 100 om afsnijden te voorkomen
-    includeFontPadding: false, // 🚀 Voorkomt padding bugs op Android
-  },
+  streakNumberContainer: { height: 100, justifyContent: "center", alignItems: "center", overflow: "hidden", paddingTop: 10 },
+  streakNumber: { color: COLORS.textLight, fontFamily: "Baloo-Bold", fontSize: 80, lineHeight: 100, includeFontPadding: false },
   streakLabel: { color: COLORS.textMuted, fontFamily: "Inter", fontSize: 20, fontWeight: "bold", letterSpacing: 2 },
 
   mediaContainer: { flex: 1, width: "100%", justifyContent: "center", alignItems: "center" },
@@ -297,45 +308,35 @@ const styles = StyleSheet.create({
   imageWrapper: { width: 250, height: 250, borderRadius: 20, overflow: "hidden", borderWidth: 2, borderColor: "rgba(255,255,255,0.1)" },
   questCover: { width: "100%", height: "100%", resizeMode: "cover" },
   imageOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.2)" },
+  
+  // 🚀 NIEUW: Styling voor de vallende medaille
+  badgeImageWrapper: {
+    width: 220,
+    height: 220,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: COLORS.secondaryYellow, // Subtiel glow effect!
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+  },
+  badgeImageContent: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'contain',
+  },
+
   buttonContainer: { width: "100%", paddingBottom: 10, marginTop: 20 },
 });
 
 const barStyles = StyleSheet.create({
-  barContainer: {
-    width: "100%",
-    padding: 20,
-    backgroundColor: COLORS.cardBackground,
-    borderRadius: 16,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
-  },
-  textRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 12,
-    alignItems: "center",
-  },
+  barContainer: { width: "100%", padding: 20, backgroundColor: COLORS.cardBackground, borderRadius: 16, marginBottom: 20, borderWidth: 1, borderColor: "rgba(255,255,255,0.05)" },
+  textRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 12, alignItems: "center" },
   titleText: { color: COLORS.textLight, fontFamily: "Baloo-Bold", fontSize: 18 },
   numberText: { color: COLORS.textMuted, fontFamily: "Inter", fontWeight: "bold" },
-  trackWrapper: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  track: {
-    flex: 1,
-    height: 16,
-    backgroundColor: "#3a3f58",
-    borderRadius: 8,
-    flexDirection: "row",
-    overflow: "hidden",
-  },
+  trackWrapper: { flexDirection: "row", alignItems: "center" },
+  track: { flex: 1, height: 16, backgroundColor: "#3a3f58", borderRadius: 8, flexDirection: "row", overflow: "hidden" },
   oldFill: { height: "100%", backgroundColor: COLORS.primaryOrange },
   newFill: { height: "100%", backgroundColor: "#FF8C5A", borderTopRightRadius: 8, borderBottomRightRadius: 8 },
-  plusText: {
-    marginLeft: 15,
-    color: "#FF8C5A",
-    fontFamily: "Baloo-Bold",
-    fontSize: 16,
-  },
+  plusText: { marginLeft: 15, color: "#FF8C5A", fontFamily: "Baloo-Bold", fontSize: 16 },
 });
