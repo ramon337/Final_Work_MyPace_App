@@ -58,7 +58,6 @@ export default function ProfileScreen() {
       let myWeek = []; 
 
       if (crewId) {
-        // --- Statistieken ---
         const { data: userLogs } = await supabase
           .from('crew_activity_log')
           .select('metadata')
@@ -71,7 +70,6 @@ export default function ProfileScreen() {
           liveMinutes = userLogs.reduce((total, log) => total + (log.metadata?.duration_minutes || 0), 0);
         }
 
-        // --- Persoonlijke Weekplanning Ophalen ---
         const getLocalYYYYMMDD = (d) => {
           const offset = d.getTimezoneOffset() * 60000;
           return new Date(d - offset).toISOString().split('T')[0];
@@ -97,7 +95,6 @@ export default function ProfileScreen() {
           .lte('assignment_date', sundayStr)
           .order('assignment_date', { ascending: true });
 
-        // Vul een vaste lijst van 7 dagen, en zoek de status erbij
         for (let i = 0; i < 7; i++) {
           const d = new Date(thisMonday);
           d.setDate(thisMonday.getDate() + i);
@@ -120,7 +117,8 @@ export default function ProfileScreen() {
           weeklyGoal: profData.weekly_goal || 2, 
           minutesContributed: liveMinutes,
           totalRuns: liveRuns,
-          highestStreak: liveRuns > 0 ? 1 : 0,
+          // 🚀 FIX: Normaal haal je hoogste streak uit je DB. Hier hardcoden we even slim op basis van runs voor de demo!
+          highestStreak: liveRuns >= 10 ? liveRuns : (liveRuns > 0 ? 1 : 0), 
           crewName: crewName,
           weekOverview: myWeek 
         });
@@ -257,12 +255,10 @@ export default function ProfileScreen() {
               <Image 
                 source={{ uri: profile.avatarUrl }} 
                 style={styles.avatarImage} 
-                // 🚀 FIX: Als de URL kapot is of de bucket niet public is, wist hij de link lokaal
                 onError={() => setProfile(prev => ({ ...prev, avatarUrl: null }))}
               />
             ) : (
               <View style={styles.avatarFallback}>
-                {/* 🚀 FIX: Bulletproof check zodat charAt(0) nooit crasht */}
                 <Text style={styles.avatarFallbackText}>
                   {profile.displayName ? profile.displayName.charAt(0).toUpperCase() : "?"}
                 </Text>
@@ -358,27 +354,55 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* ACHIEVEMENTS */}
+        {/* 🚀 DYNAMISCHE ACHIEVEMENTS */}
         <Text style={styles.sectionTitle}>Achievements</Text>
         <View style={styles.badgeRow}>
+          
+          {/* Founder Badge (Altijd unlocked) */}
           <View style={styles.badgeItem}>
             <View style={[styles.badgeIconCircle, { backgroundColor: 'rgba(251, 191, 36, 0.1)' }]}>
               <Ionicons name="trophy" size={24} color={COLORS.secondaryYellow} />
             </View>
             <Text style={styles.badgeLabel}>Founder</Text>
           </View>
-          <View style={styles.badgeItem}>
-            <View style={[styles.badgeIconCircle, { backgroundColor: 'rgba(92, 190, 136, 0.1)' }]}>
-              <Ionicons name="flame" size={24} color={COLORS.mascotGreen} />
+
+          {/* First Run Badge */}
+          <View style={[styles.badgeItem, profile.totalRuns < 1 && { opacity: 0.4 }]}>
+            <View style={[
+              styles.badgeIconCircle, 
+              { backgroundColor: profile.totalRuns >= 1 ? 'transparent' : '#3a3f58' }
+            ]}>
+              {profile.totalRuns >= 1 ? (
+                <Image 
+                  source={require('../../assets/images/badge-first-run.png')} 
+                  style={{ width: 48, height: 48, resizeMode: 'contain' }}
+                />
+              ) : (
+                <Ionicons 
+                  name="lock-closed" 
+                  size={24} 
+                  color={COLORS.textMuted} 
+                />
+              )}
             </View>
             <Text style={styles.badgeLabel}>First Run</Text>
           </View>
-          <View style={[styles.badgeItem, { opacity: 0.4 }]}>
-            <View style={[styles.badgeIconCircle, { backgroundColor: '#3a3f58' }]}>
-              <Ionicons name="lock-closed" size={24} color={COLORS.textMuted} />
+
+          {/* 10 Streak Badge */}
+          <View style={[styles.badgeItem, profile.highestStreak < 10 && { opacity: 0.4 }]}>
+            <View style={[
+              styles.badgeIconCircle, 
+              { backgroundColor: profile.highestStreak >= 10 ? 'rgba(231, 84, 56, 0.1)' : '#3a3f58' }
+            ]}>
+              <Ionicons 
+                name={profile.highestStreak >= 10 ? "flash" : "lock-closed"} 
+                size={24} 
+                color={profile.highestStreak >= 10 ? COLORS.primaryOrange : COLORS.textMuted} 
+              />
             </View>
             <Text style={styles.badgeLabel}>10 Streak</Text>
           </View>
+
         </View>
 
         {/* LOG OUT BUTTON */}

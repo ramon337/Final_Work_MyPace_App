@@ -149,27 +149,15 @@ export default function AnimationScreen({ route }) {
       });
     }
 
-    // 🚀 NIEUW: BADGE SLIDES (First Run)
     if (animationData.badgeUnlocked === 'first_run') {
-      
-      // Slide 1: Mascotte juicht
+      // Direct de badge laten vallen met gecombineerde tekst!
       builtSlides.push({
-        title: "Incredible! 🎉",
-        message: "Great job, you completed your very first run! Welcome to the runner's club.",
-        animation: cheerAnimation,
-        buttonText: "Continue",
-        isQuest: false,
-        isBadge: false
-      });
-
-      // Slide 2: Medaille valt in beeld
-      builtSlides.push({
-        title: "Achievement Unlocked",
-        message: "You earned the 'First Run' badge! Check it out in your Trophy Room.",
-        buttonText: "Awesome!",
+        title: "Achievement!",
+        message: "You earned the 'First Run' badge!",
+        buttonText: "Claim Reward",
         isQuest: false,
         isBadge: true,
-        badgeImage: require('../../assets/images/badge-first-run.png') // <-- Zorg dat deze file bestaat!
+        badgeImage: require('../../assets/images/badge-first-run.png') 
       });
     }
 

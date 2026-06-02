@@ -8,6 +8,17 @@ import { supabase } from "../../lib/supabase";
 import { checkAndProgressStreak } from "../../services/streakService";
 import { useNavigation } from '@react-navigation/native';
 
+// 🚀 MASTER CHALLENGES TOEGEVOEGD: Zodat de sync altijd de volgende quest kan aanmaken!
+const MASTER_CHALLENGES = [
+  { title: "The Marathon", subtitle: "Run for 42 minutes to conquer the classic distance", target_amount: 42 },
+  { title: "Centurion", subtitle: "Log 100 minutes of running as a crew", target_amount: 100 },
+  { title: "London to Paris", subtitle: "Run 342 minutes to virtually cross the channel", target_amount: 342 },
+  { title: "Camino de Santiago", subtitle: "Conquer the famous route in 790 minutes", target_amount: 790 },
+  { title: "Route 66", subtitle: "The ultimate 3,940 minutes roadtrip", target_amount: 3940 },
+  { title: "Great Wall of China", subtitle: "An epic 21,196 minutes expedition", target_amount: 21196 },
+  { title: "Around the World", subtitle: "The ultimate boss: 40,075 minutes", target_amount: 40075 },
+];
+
 export default function StravaSyncScreen({ route }) {
   const navigation = useNavigation();
   const { runs = [] } = route.params || {};
@@ -56,24 +67,13 @@ export default function StravaSyncScreen({ route }) {
       const { data: crew } = await supabase.from("crews").select("total_minutes").eq("id", crewMember.crew_id).single();
       await supabase.from("crews").update({ total_minutes: (crew.total_minutes || 0) + timeMins }).eq("id", crewMember.crew_id);
 
+      // 3. Quest Logica (Nu waterdicht!)
       let questCompleted = false;
       let questTitle = "";
       let questOldProgress = 0;
       let questTarget = 0;
 
       try {
-        // A. Eerst forceren we de database om te initialiseren (zodat er ALTIJD een quest is)
-        // We roepen een speciale, silent refresh aan van QuestsScreen via navigation.
-        // Omdat QuestsScreen al logica heeft om een quest te maken als er 0 zijn, hergebruiken we die indirect.
-        
-        // We moeten echter een robuustere methode hebben: direct in de DB een quest maken als er 0 zijn.
-        // (De navigation methode is te kwetsbaar omdat QuestsScreen gemount moet zijn).
-
-        // B. Pak de MASTER_CHALLENGES (zorg dat je deze ook in dit bestand importeert!)
-        // Omdat de challenges in QuestsScreen staan, is dit lastig. 
-        // TIP: Voor een robuuste app moet je MasterChallenges in een los bestand zetten en overal importeren.
-        // VOOR NU: Gebruik de lokale `42 minuten marathon` als veilige fallback.
-
         const { data: currentQuestData } = await supabase
           .from("crew_quests")
           .select("id, title, target_amount, current_progress")
@@ -83,15 +83,18 @@ export default function StravaSyncScreen({ route }) {
 
         let currentQuest = currentQuestData?.find(q => q.current_progress < q.target_amount);
 
-        // ALS ER GEEN QUEST IS (nieuwe crew): Maak de EERSTE (Marathon) direct aan!
-        if (!currentQuest && (!currentQuestData || currentQuestData.length === 0)) {
+        // 🚀 FIX: Als er géén actieve quest is (alles behaald of nieuwe crew), maak de VOLGENDE aan!
+        if (!currentQuest) {
+          const existingTargets = currentQuestData ? currentQuestData.map(q => q.target_amount) : [];
+          const nextTemplate = MASTER_CHALLENGES.find(q => !existingTargets.includes(q.target_amount)) || MASTER_CHALLENGES[0];
+
           const { data: newQuestData, error: insertQuestError } = await supabase
             .from('crew_quests')
             .insert({
               crew_id: crewMember.crew_id,
-              title: "The Marathon", // Veilig initialiseren op Marathon
-              subtitle: "Run for 42 minutes to conquer the classic distance",
-              target_amount: 42,
+              title: nextTemplate.title,
+              subtitle: nextTemplate.subtitle,
+              target_amount: nextTemplate.target_amount,
               current_progress: 0,
               type: 'minutes'
             })
@@ -102,7 +105,7 @@ export default function StravaSyncScreen({ route }) {
           currentQuest = newQuestData;
         }
 
-        // C. Tel de minuten bij de quest (Marathon of de bestaande actieve)
+        // C. Tel de minuten bij de quest
         if (currentQuest) {
           questOldProgress = currentQuest.current_progress || 0;
           const questNewProgress = questOldProgress + timeMins;
@@ -121,7 +124,6 @@ export default function StravaSyncScreen({ route }) {
         }
       } catch (err) {
         console.error("Fout in Quest Initialisatie in StravaSync:", err);
-        // We gooien de error niet omhoog, zodat de run-upload niet faalt als Quests niet werken.
       }
 
       // 4. Logboek update
@@ -132,18 +134,28 @@ export default function StravaSyncScreen({ route }) {
         metadata: { run_name: runToSync.name, distance_km: parseFloat(distanceKm), duration_minutes: timeMins },
       });
 
-      // 5. Streak Engine
+      // 🚀 5. CHECK VOOR DE FIRST RUN BADGE
+      const { count } = await supabase
+        .from("crew_activity_log")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", user.id)
+        .eq("event_type", "run_uploaded");
+
+      const isFirstRun = count === 1;
+
+      // 6. Streak Engine
       const streakResult = await checkAndProgressStreak(crewMember.crew_id, user.id);
 
-      // 🚀 6. NAVIGEER NAAR HET NIEUWE ANIMATIESCHERM MET ALLE DATA
+      // 7. NAVIGEER NAAR HET NIEUWE ANIMATIESCHERM MET ALLE DATA
       const animationData = {
         streakStatus: streakResult.status,
         newStreak: streakResult.newStreak,
         timeMins: timeMins,
         questCompleted: questCompleted,
         questTitle: questTitle,
-        questProgress: questOldProgress, // 👈 Hier geven we het oranje deel van de balk door
-        questTarget: questTarget         // 👈 Hier geven we het grijze einddoel door
+        questProgress: questOldProgress, 
+        questTarget: questTarget,
+        badgeUnlocked: isFirstRun ? 'first_run' : null // 🚀 HIER ZIT DE TRIGGER VOOR JE MEDAILLE!
       };
 
       navigation.navigate("AnimationScreen", { animationData });
@@ -175,7 +187,7 @@ export default function StravaSyncScreen({ route }) {
             <View style={styles.emptyState}>
               <Ionicons name="checkmark-done-circle-outline" size={60} color={COLORS.secondaryYellow} />
               <Text style={styles.emptyText}>You're all caught up!</Text>
-              <Text style={styles.emptySubtext}>No new runs found in the last 3 days.</Text>
+              <Text style={styles.emptySubtext}>No new runs found in the last 7 days.</Text>
             </View>
           ) : (
             availableRuns.map((run) => {

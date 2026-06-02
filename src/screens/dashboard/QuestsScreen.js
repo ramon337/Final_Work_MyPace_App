@@ -70,9 +70,16 @@ export default function QuestsScreen({ navigation }) {
   const [activeQuests, setActiveQuests] = useState([]);
   const [completedQuests, setCompletedQuests] = useState([]);
   const [loadingQuests, setLoadingQuests] = useState(true);
+  const [isFirstLoad, setIsFirstLoad] = useState(true);
   
   const [isModalVisible, setModalVisible] = useState(false);
   const isInsertingRef = useRef(false);
+
+  useEffect(() => {
+    if (!contextLoading && !loadingQuests) {
+      setIsFirstLoad(false);
+    }
+  }, [contextLoading, loadingQuests]);
 
   const fetchQuests = async () => {
     if (!crewData?.id) {
@@ -144,8 +151,8 @@ export default function QuestsScreen({ navigation }) {
   const upcomingQuests = MASTER_CHALLENGES.filter(q => !activeAndCompletedTargets.includes(q.target_amount));
   const previewUpcoming = upcomingQuests.slice(0, 2);
 
-  // A. Eerst checken of de usercontext nog laadt
-  if (contextLoading) {
+// 🚀 FIX: Toon het laadscherm UITSLUITEND bij de allereerste opstart
+  if (isFirstLoad) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={COLORS.primaryOrange} />
@@ -164,8 +171,8 @@ export default function QuestsScreen({ navigation }) {
         </Text>
         <TouchableOpacity 
           style={styles.viewAllButton} 
-          activeOpacity={0.8} 
-          onPress={() => navigation.getParent()?.navigate("AccountSetup") || navigation.navigate("AccountSetup")}
+          activeOpacity={0.8}
+          onPress={() => navigation.navigate("JoinCrew")}
         >
           <Text style={[styles.viewAllText, { fontSize: 18 }]}>Join or Create a Crew</Text>
         </TouchableOpacity>
@@ -173,19 +180,10 @@ export default function QuestsScreen({ navigation }) {
     );
   }
 
-  // C. Als hij wel in een crew zit, maar de quests nog laden
-  if (loadingQuests) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={COLORS.primaryOrange} />
-      </View>
-    );
-  }
-
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Quests</Text>
+        <Text style={styles.headerTitle}>Crew Quests</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>

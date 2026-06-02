@@ -14,6 +14,7 @@ export default function CrewSettingsScreen({ navigation }) {
   const [members, setMembers] = useState([]);
   const [loadingMembers, setLoadingMembers] = useState(true);
   const [currentUserId, setCurrentUserId] = useState(null);
+  const [isLeaving, setIsLeaving] = useState(false); // 🚀 NIEUW
   
   const [isLocalAdmin, setIsLocalAdmin] = useState(false);
   const [localCrewName, setLocalCrewName] = useState(crewData?.name || "");
@@ -132,6 +133,8 @@ export default function CrewSettingsScreen({ navigation }) {
 
   const handleLeaveCrew = async () => {
     try {
+      setIsLeaving(true); // 🚀 Zet direct het laadscherm aan!
+      
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
@@ -142,10 +145,12 @@ export default function CrewSettingsScreen({ navigation }) {
       await supabase.from("crew_activity_log").insert({ crew_id: crewData.id, event_type: "member_left", metadata: { ex_member_name: myName } });
       await recalculateFutureSchedule(crewData.id);
       
+      await refreshCrewData(); // Wacht braaf tot de context leeg is
       navigation.goBack(); 
-      refreshCrewData(); 
+      
     } catch (error) {
       console.error("Fout bij verlaten:", error);
+      setIsLeaving(false); // Zet loader uit als het misgaat
     }
   };
 
@@ -172,6 +177,15 @@ export default function CrewSettingsScreen({ navigation }) {
       ]
     );
   };
+
+  if (isLeaving) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={COLORS.primaryOrange} />
+        <Text style={{ color: COLORS.textMuted, marginTop: 15, fontFamily: 'Inter' }}>Leaving crew...</Text>
+      </View>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>

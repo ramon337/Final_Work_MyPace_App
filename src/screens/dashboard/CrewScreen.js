@@ -1,7 +1,7 @@
 // src/screens/main/CrewScreen.js
 import React, { useState, useEffect, useRef } from "react";
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator, Image, Modal, ImageBackground, Animated } from "react-native";
-import { SafeAreaView } from 'react-native-safe-area-context'; // Gelinkt aan je vorige fix!
+import { SafeAreaView } from "react-native-safe-area-context"; // Gelinkt aan je vorige fix!
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "../../theme/colors";
 import * as WebBrowser from "expo-web-browser";
@@ -9,6 +9,8 @@ import { useAuthRequest, makeRedirectUri } from "expo-auth-session";
 import { useUser } from "../../context/UserContext";
 import { supabase } from "../../lib/supabase";
 import { ensureFourteenDaySchedule, processNachtCheck } from "../../services/streakService";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import CustomButton from "../../components/ui/CustomButton";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -23,12 +25,12 @@ export default function CrewScreen({ navigation }) {
   const { crewData, loading: userLoading, refreshCrewData } = useUser();
   // Activity log states
   const [activities, setActivities] = useState([]);
-  
+
   // Paginering logica
   const ACTIVITIES_PER_PAGE = 5;
-  const [activitiesPage, setActivitiesPage] = useState(0); 
-  const [hasMoreActivities, setHasMoreActivities] = useState(true); 
-  const [isMoreLoading, setIsMoreLoading] = useState(false); 
+  const [activitiesPage, setActivitiesPage] = useState(0);
+  const [hasMoreActivities, setHasMoreActivities] = useState(true);
+  const [isMoreLoading, setIsMoreLoading] = useState(false);
 
   // Streak Engine states
   // 🚀 FIX: Standaard op false gezet zodat hij nooit uit het niets de UI blokkeert
@@ -39,23 +41,21 @@ export default function CrewScreen({ navigation }) {
   const [timeRemaining, setTimeRemaining] = useState("");
   const [isWeekModalVisible, setWeekModalVisible] = useState(false);
   const [isFirstLoad, setIsFirstLoad] = useState(true);
-  
+  const [showTokenModal, setShowTokenModal] = useState(false);
+
   // Crew Profiles voor avatars
   const [crewProfilesMap, setCrewProfilesMap] = useState({});
   const [crewMembersList, setCrewMembersList] = useState([]);
 
-    useEffect(() => {
+  useEffect(() => {
     if (!userLoading) {
       setIsFirstLoad(false);
     }
   }, [userLoading]);
 
-    useEffect(() => {
+  useEffect(() => {
     if (crewData?.current_streak) {
-      Animated.sequence([
-        Animated.timing(streakAnimation, { toValue: 1.2, duration: 200, useNativeDriver: true }),
-        Animated.spring(streakAnimation, { toValue: 1, friction: 3, useNativeDriver: true })
-      ]).start();
+      Animated.sequence([Animated.timing(streakAnimation, { toValue: 1.2, duration: 200, useNativeDriver: true }), Animated.spring(streakAnimation, { toValue: 1, friction: 3, useNativeDriver: true })]).start();
     }
   }, [crewData?.current_streak]);
 
@@ -85,6 +85,37 @@ export default function CrewScreen({ navigation }) {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    const checkTokenPopup = async () => {
+      if (!crewData?.id || weekAssignments.length === 0) return;
+
+      const offset = new Date().getTimezoneOffset() * 60000;
+      const todayStr = new Date(new Date() - offset).toISOString().split("T")[0];
+
+      // 🚀 TIJDELIJKE TEST-MODUS: we kijken naar vandaag in plaats van gisteren
+      const yesterdayStr = todayStr;
+
+      // We dwingen de check om ALTIJD 'true' te zijn, alsof er gisteren een token is gebruikt
+      if (true) {
+        /*const yesterday = new Date(new Date() - offset);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().split("T")[0];
+
+      const yesterdayAssignment = weekAssignments.find((a) => a.assignment_date === yesterdayStr);
+
+      if (yesterdayAssignment && yesterdayAssignment.status === "saved_by_token") {*/
+        const storageKey = `@token_seen_${crewData.id}_${yesterdayStr}`;
+        const hasSeen = await AsyncStorage.getItem(storageKey);
+
+        if (!hasSeen) {
+          setShowTokenModal(true);
+          await AsyncStorage.setItem(storageKey, "true"); // Zet het vinkje dat je hem zag
+        }
+      }
+    };
+    checkTokenPopup();
+  }, [weekAssignments]);
+
   // --- 3. DATA OPHALEN & STREAK ENGINE ---
   const fetchActivityLog = async (pageNumber, shouldAppend = false) => {
     if (!crewData?.id) return;
@@ -94,12 +125,7 @@ export default function CrewScreen({ navigation }) {
     const from = pageNumber * ACTIVITIES_PER_PAGE;
     const to = from + ACTIVITIES_PER_PAGE - 1;
 
-    const { data } = await supabase
-      .from("crew_activity_log")
-      .select(`id, event_type, metadata, created_at, profiles ( display_name )`)
-      .eq("crew_id", crewData.id)
-      .order("created_at", { ascending: false })
-      .range(from, to); 
+    const { data } = await supabase.from("crew_activity_log").select(`id, event_type, metadata, created_at, profiles ( display_name )`).eq("crew_id", crewData.id).order("created_at", { ascending: false }).range(from, to);
 
     if (shouldAppend) setIsMoreLoading(false);
 
@@ -116,7 +142,7 @@ export default function CrewScreen({ navigation }) {
         setHasMoreActivities(true);
       }
     } else {
-      setHasMoreActivities(false); 
+      setHasMoreActivities(false);
     }
   };
 
@@ -134,10 +160,7 @@ export default function CrewScreen({ navigation }) {
       await processNachtCheck(crewData.id);
       await ensureFourteenDaySchedule(crewData.id);
 
-      const { data: profilesData } = await supabase
-        .from("crew_members")
-        .select("user_id, profiles(display_name, avatar_url)")
-        .eq("crew_id", crewData.id);
+      const { data: profilesData } = await supabase.from("crew_members").select("user_id, profiles(display_name, avatar_url)").eq("crew_id", crewData.id);
 
       const profileMap = {};
       const membersArray = [];
@@ -146,7 +169,7 @@ export default function CrewScreen({ navigation }) {
         profilesData.forEach((p) => {
           const name = p.profiles?.display_name || "Loper";
           const avatar = p.profiles?.avatar_url || null;
-          
+
           profileMap[p.user_id] = name;
           membersArray.push({ id: p.user_id, name, avatar });
         });
@@ -171,13 +194,7 @@ export default function CrewScreen({ navigation }) {
       nextSunday.setDate(thisMonday.getDate() + 13);
       const nextSundayStr = getLocalYYYYMMDD(nextSunday);
 
-      const { data: assignments } = await supabase
-        .from("crew_daily_assignments")
-        .select("*")
-        .eq("crew_id", crewData.id)
-        .gte("assignment_date", mondayStr)
-        .lte("assignment_date", nextSundayStr)
-        .order("assignment_date", { ascending: true });
+      const { data: assignments } = await supabase.from("crew_daily_assignments").select("*").eq("crew_id", crewData.id).gte("assignment_date", mondayStr).lte("assignment_date", nextSundayStr).order("assignment_date", { ascending: true });
 
       if (assignments && assignments.length > 0) {
         setWeekAssignments(assignments);
@@ -298,13 +315,29 @@ export default function CrewScreen({ navigation }) {
           </Text>
         );
       case "member_joined":
-        return <Text>{name} <Text style={styles.activityAction}>joined the Crew! 👋</Text></Text>;
+        return (
+          <Text>
+            {name} <Text style={styles.activityAction}>joined the Crew! 👋</Text>
+          </Text>
+        );
       case "member_left":
-        return <Text>{item.metadata?.ex_member_name || "A member"} <Text style={styles.activityAction}>left the Crew.</Text></Text>;
+        return (
+          <Text>
+            {item.metadata?.ex_member_name || "A member"} <Text style={styles.activityAction}>left the Crew.</Text>
+          </Text>
+        );
       case "streak_broken":
-        return <Text>💥 Oh no! <Text style={styles.activityAction}>The relay streak was broken.</Text></Text>;
+        return (
+          <Text>
+            💥 Oh no! <Text style={styles.activityAction}>The relay streak was broken.</Text>
+          </Text>
+        );
       case "rest_day_used":
-        return <Text>A Rest Day Token <Text style={styles.activityAction}>was deployed to save the streak!</Text></Text>;
+        return (
+          <Text>
+            A Rest Day Token <Text style={styles.activityAction}>was deployed to save the streak!</Text>
+          </Text>
+        );
       default:
         return <Text>Something happened in the crew.</Text>;
     }
@@ -328,15 +361,9 @@ export default function CrewScreen({ navigation }) {
         <View style={styles.emptyCrewContent}>
           <Ionicons name="people-circle-outline" size={100} color={COLORS.textMuted} />
           <Text style={styles.emptyCrewTitle}>You're flying solo!</Text>
-          <Text style={styles.emptyCrewText}>
-            Running is better together. Join an existing crew or start your own to unlock the relay streak and epic quests.
-          </Text>
+          <Text style={styles.emptyCrewText}>Running is better together. Join an existing crew or start your own to unlock the relay streak and epic quests.</Text>
 
-          <TouchableOpacity 
-            style={styles.primaryButton} 
-            activeOpacity={0.8} 
-            onPress={() => navigation.getParent()?.navigate("AccountSetup") || navigation.navigate("AccountSetup")}
-          >
+          <TouchableOpacity style={styles.primaryButton} activeOpacity={0.8} onPress={() => navigation.navigate("JoinCrew")}>
             <Text style={styles.primaryButtonText}>Join or Create a Crew</Text>
           </TouchableOpacity>
         </View>
@@ -346,7 +373,6 @@ export default function CrewScreen({ navigation }) {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      
       {/* HEADER */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.settingsButtonRight} activeOpacity={0.7} onPress={() => navigation.navigate("CrewSettings")}>
@@ -373,27 +399,23 @@ export default function CrewScreen({ navigation }) {
       <View style={styles.bannerHeader}>
         <Text style={styles.sectionTitle}>Relay Streak</Text>
       </View>
-      
-      <ImageBackground 
-        source={require('../../assets/images/streak-banner.png')} 
-        style={styles.illustratorBannerPlaceholder}
-        imageStyle={{ borderRadius: 16 }}
-      >
-        <View style={{ flex: 1 }} /> 
+
+      <ImageBackground source={require("../../assets/images/streak-banner.png")} style={styles.illustratorBannerPlaceholder} imageStyle={{ borderRadius: 16 }}>
+        <View style={{ flex: 1 }} />
 
         <View style={styles.bannerTextContainer}>
-  {/* We wrappen het getal in een Animated.Text */}
-  <Animated.Text style={[
-    styles.bannerStreakNumber, 
-    { transform: [{ scale: streakAnimation }] } // De bounce-schaal
-  ]}>
-    {crewData?.current_streak || 0}
-  </Animated.Text>
-  
-  <Text style={styles.bannerStreakLabel}>
-    {crewData?.current_streak === 1 ? "Day" : "Days"}
-  </Text>
-</View>
+          {/* We wrappen het getal in een Animated.Text */}
+          <Animated.Text
+            style={[
+              styles.bannerStreakNumber,
+              { transform: [{ scale: streakAnimation }] }, // De bounce-schaal
+            ]}
+          >
+            {crewData?.current_streak || 0}
+          </Animated.Text>
+
+          <Text style={styles.bannerStreakLabel}>{crewData?.current_streak === 1 ? "Day" : "Days"}</Text>
+        </View>
       </ImageBackground>
 
       {/* CONDITIONELE WEERGAVE OP BASIS VAN DE STREAK */}
@@ -463,6 +485,10 @@ export default function CrewScreen({ navigation }) {
                 const isFirstDayThisWeek = index === 0;
                 const isFirstDayNextWeek = index === 7;
 
+                const diffInMs = new Date(todayStr) - new Date(day.assignment_date);
+                const daysAgo = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
+                const isPartOfCurrentStreak = daysAgo < (crewData?.current_streak || 0);
+
                 let dayStatusColor = COLORS.textMuted;
                 let dayIcon = "ellipse-outline";
                 let lopers = "";
@@ -471,6 +497,16 @@ export default function CrewScreen({ navigation }) {
                   dayStatusColor = "#475569";
                   dayIcon = "remove-circle-outline";
                   lopers = "Crew not formed yet";
+                } else if (day.assignment_date < todayStr && !isPartOfCurrentStreak) {
+                  // 🚀 FIX: Verleden dagen buiten de actieve streak
+                  dayStatusColor = "#475569";
+                  dayIcon = "close";
+                  lopers = "No run logged";
+                } else if (day.status === "saved_by_token") {
+                  // 🚀 FIX: Token status
+                  dayStatusColor = COLORS.secondaryYellow;
+                  dayIcon = "shield-checkmark";
+                  lopers = "Rest day token saved the streak";
                 } else if (day.status === "completed") {
                   dayStatusColor = COLORS.mascotGreen;
                   dayIcon = "checkmark-circle";
@@ -479,11 +515,8 @@ export default function CrewScreen({ navigation }) {
                   dayStatusColor = "#e74c3c";
                   dayIcon = "close-circle";
                   lopers = day.is_rest_day ? "Rest Day" : day.assigned_users?.map((id) => crewProfilesMap[id]).join(" & ") || "Failed";
-                } else if (day.status === "saved_by_token") {
-                  dayStatusColor = COLORS.secondaryYellow;
-                  dayIcon = "shield-checkmark";
-                  lopers = "Streak saved!";
                 } else {
+                  // OUDE CODE ONDERAAN BEHOUDEN (Voor vandaag & toekomst)
                   if (day.is_rest_day) {
                     dayStatusColor = "#3498db";
                     dayIcon = "snow";
@@ -508,7 +541,9 @@ export default function CrewScreen({ navigation }) {
                         <Ionicons name={dayIcon} size={24} color={dayStatusColor} />
                       </View>
                       <View style={styles.weekNameCol}>
-                        <Text style={[styles.weekRunnerText, isBeforeCreation ? { color: "#475569", fontStyle: "italic" } : null]} numberOfLines={1}>{lopers}</Text>
+                        <Text style={[styles.weekRunnerText, isBeforeCreation ? { color: "#475569", fontStyle: "italic" } : null]} numberOfLines={1}>
+                          {lopers}
+                        </Text>
                       </View>
                       {isToday && !isBeforeCreation && (
                         <View style={styles.todayBadge}>
@@ -523,10 +558,49 @@ export default function CrewScreen({ navigation }) {
           </View>
         </View>
       </Modal>
+      <Modal visible={showTokenModal} animationType="fade" transparent={true}>
+        <View style={[styles.modalOverlay, { justifyContent: "center", alignItems: "center" }]}>
+          <View style={[
+            styles.modalContent, 
+            { 
+              width: "90%", // 🚀 Modal iets breder gemaakt
+              borderRadius: 24, 
+              padding: 30, 
+              paddingTop: 45, // 🚀 Extra ruimte bovenaan zodat de tekst niet tegen het kruisje plakt
+              alignItems: "center",
+              position: "relative" // Cruciaal voor het kruisje rechtsboven
+            }
+          ]}>
+            
+            {/* 🚀 HET KRUISJE RECHTSBOVEN */}
+            <TouchableOpacity 
+              style={{ position: "absolute", top: 15, right: 15, zIndex: 10, padding: 5 }}
+              activeOpacity={0.7}
+              onPress={() => setShowTokenModal(false)}
+            >
+              <Ionicons name="close" size={28} color={COLORS.textMuted} />
+            </TouchableOpacity>
+
+            {/* 🚀 DE GROTE TOKEN AFBEELDING */}
+            <Image 
+              style={{ width: 160, height: 160, marginBottom: 20, resizeMode: "contain" }} 
+              source={require("../../assets/images/rest-day-token-icon.png")}
+            />
+            
+            <Text style={[styles.modalTitle, { textAlign: "center", fontSize: 28 }]}>
+              Streak Saved!
+            </Text>
+            
+            <Text style={[styles.message, { color: COLORS.textMuted, textAlign: "center", marginTop: 10, marginBottom: 10, lineHeight: 24 }]}>
+              The crew didn't run yesterday. But don't worry, a Rest Day Token was used and your streak is safe!
+            </Text>
+            
+          </View>
+        </View>
+      </Modal>
 
       {/* STRAVA SYNC BUTTON */}
       <TouchableOpacity style={[styles.stravaButton, !request ? { opacity: 0.5 } : {}]} activeOpacity={0.8} disabled={!request} onPress={() => promptAsync()}>
-        <Ionicons name="fitness" size={24} color="#FFF" style={{ marginRight: 10 }} />
         <Text style={styles.stravaButtonText}>Sync run from Strava</Text>
       </TouchableOpacity>
 
@@ -606,30 +680,30 @@ const styles = StyleSheet.create({
     padding: 20,
     marginBottom: 20,
     height: 140,
-    overflow: 'hidden',
-    flexDirection: 'row', 
+    overflow: "hidden",
+    flexDirection: "row",
     borderColor: "#3a3f58",
     borderWidth: 3,
   },
   bannerTextContainer: {
     flex: 1,
-    alignItems: 'center',
-    flexDirection: 'row',
+    alignItems: "center",
+    flexDirection: "row",
     marginLeft: 10,
   },
-  bannerStreakNumber: { 
-    color: COLORS.textLight, 
-    fontFamily: "Baloo-Bold", 
+  bannerStreakNumber: {
+    color: COLORS.textLight,
+    fontFamily: "Baloo-Bold",
     fontSize: 65,
     lineHeight: 60,
     paddingTop: 40,
   },
   bannerStreakLabel: {
-    color: "#FFF", 
-    fontFamily: "Baloo-Bold", 
-    fontSize: 40, 
-    fontWeight: "bold", 
-    textTransform: 'uppercase', 
+    color: "#FFF",
+    fontFamily: "Baloo-Bold",
+    fontSize: 40,
+    fontWeight: "bold",
+    textTransform: "uppercase",
     letterSpacing: 2,
     marginTop: 17,
     marginLeft: 10,
@@ -662,14 +736,14 @@ const styles = StyleSheet.create({
   timerRow: { flexDirection: "row", alignItems: "center" },
   timerText: { color: COLORS.primaryOrange, fontFamily: "Inter", fontWeight: "bold", fontSize: 14, marginLeft: 6 },
   stravaButton: {
-    backgroundColor: "#FC4C02",
+    backgroundColor: COLORS.primaryOrange,
     flexDirection: "row",
     borderRadius: 16,
     paddingVertical: 16,
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 35,
-    shadowColor: "#FC4C02",
+    shadowColor: COLORS.primaryOrange,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4,
     shadowRadius: 8,
@@ -706,12 +780,24 @@ const styles = StyleSheet.create({
   weekIconCol: { width: 40, alignItems: "center" },
   weekNameCol: { flex: 1, paddingLeft: 10 },
   weekRunnerText: { color: COLORS.textLight, fontFamily: "Inter", fontSize: 16, fontWeight: "600" },
-  
+
   // --- EMPTY STATE STYLES ---
   emptyCrewContainer: { flex: 1, backgroundColor: COLORS.background },
-  emptyCrewContent: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 30 },
-  emptyCrewTitle: { color: COLORS.textLight, fontFamily: 'Baloo-Bold', fontSize: 32, marginTop: 20, marginBottom: 10, textAlign: 'center' },
-  emptyCrewText: { color: COLORS.textMuted, fontFamily: 'Inter', fontSize: 16, textAlign: 'center', lineHeight: 24, marginBottom: 40 },
-  primaryButton: { backgroundColor: COLORS.primaryOrange, paddingVertical: 16, paddingHorizontal: 30, borderRadius: 16, width: '100%', alignItems: 'center', shadowColor: COLORS.primaryOrange, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 5 },
+  emptyCrewContent: { flex: 1, justifyContent: "center", alignItems: "center", padding: 30 },
+  emptyCrewTitle: { color: COLORS.textLight, fontFamily: "Baloo-Bold", fontSize: 32, marginTop: 20, marginBottom: 10, textAlign: "center" },
+  emptyCrewText: { color: COLORS.textMuted, fontFamily: "Inter", fontSize: 16, textAlign: "center", lineHeight: 24, marginBottom: 40 },
+  primaryButton: {
+    backgroundColor: COLORS.primaryOrange,
+    paddingVertical: 16,
+    paddingHorizontal: 30,
+    borderRadius: 16,
+    width: "100%",
+    alignItems: "center",
+    shadowColor: COLORS.primaryOrange,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 5,
+  },
   primaryButtonText: { color: "#FFF", fontFamily: "Inter", fontWeight: "bold", fontSize: 18 },
 });
