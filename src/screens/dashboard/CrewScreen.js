@@ -750,7 +750,7 @@ const [showTutorial, setShowTutorial] = useState(false);
                   <Ionicons name={iconName} size={16} color="#FFF" />
                 </View>
                 <View style={styles.activityDetails}>
-                  <View style={styles.activityUser}>{renderActivityText(item)}</View>
+                  <Text style={styles.activityUser}>{renderActivityText(item)}</Text>
                   <Text style={styles.activityMeta}>{formatRelativeTime(item.created_at)}</Text>
                 </View>
               </View>
