@@ -7,6 +7,7 @@ import { COLORS } from "../../theme/colors";
 import CustomButton from "../../components/ui/CustomButton";
 
 import cheerAnimation from "../../assets/animations/mascot-cheering.json";
+import talkAnimation from "../../assets/animations/mascot-talking.json";
 
 export default function MeetBuddyScreen({ navigation }) {
   const [currentPhase, setCurrentPhase] = useState(0);
@@ -62,28 +63,27 @@ export default function MeetBuddyScreen({ navigation }) {
     {
       body: "Hello, I'm your Buddy! I'll guide you through this experience...",
       buttonText: "I got it",
-      animation: cheerAnimation, // 💡 Pratende mascotte
+      animation: talkAnimation, // 💡 Pratende mascotte
       isLarge: false,
     },
     {
       body: "At MyPace, we don't care about your speed. Showing up consistently for a relaxed run is way more valuable than pushing your limits and burning out.",
       buttonText: "Makes sense",
-      animation: cheerAnimation, // 💡 Pratende mascotte
+      animation: talkAnimation, // 💡 Pratende mascotte
       isLarge: false,
     },
     {
       body: "Let's get to know you and make your account!",
       buttonText: "Let's go",
-      animation: cheerAnimation, // 💡 Pratende mascotte
+      animation: talkAnimation, // 💡 Pratende mascotte
       isLarge: false,
     }
   ];
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (animationRef.current) animationRef.current.play();
-    }, 150);
-    return () => clearTimeout(timer);
+useEffect(() => {
+    if (animationRef.current && current.body) {
+      animationRef.current.play();
+    }
   }, [currentPhase]);
 
  const handleNext = () => {
@@ -137,7 +137,7 @@ export default function MeetBuddyScreen({ navigation }) {
             key={currentPhase}
             source={current.animation}
             autoPlay={false}
-            loop={true}
+            loop={!isTextFullyTyped} // 🚀 Dit is de magie! Hij stopt vanzelf aan het einde van zijn cyclus.
             renderMode="SOFTWARE"
             style={current.isLarge ? styles.lottieLarge : styles.lottieSmall}
           />

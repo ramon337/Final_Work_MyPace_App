@@ -10,6 +10,7 @@ import { supabase } from "../../lib/supabase";
 import { recalculateFutureSchedule } from "../../services/streakService";
 import * as ImagePicker from "expo-image-picker";
 import { KeyboardAvoidingView, Platform, ScrollView } from "react-native";
+import LottieView from "lottie-react-native";
 
 export default function AccountSetupScreen({ navigation }) {
   const [currentStep, setCurrentStep] = useState(1);
@@ -38,6 +39,7 @@ export default function AccountSetupScreen({ navigation }) {
   const [isBuddyTextFullyTyped, setIsBuddyTextFullyTyped] = useState(true);
   const typewriterTimer = useRef(null);
   const exactTextRef = useRef("");
+  const buddyAnimationRef = useRef(null);
 
   useEffect(() => {
     if (currentStep === 4) {
@@ -106,6 +108,12 @@ export default function AccountSetupScreen({ navigation }) {
       setLoadingCrews(false);
     }
   };
+
+useEffect(() => {
+    if (buddyAnimationRef.current && currentStep === 4) {
+      buddyAnimationRef.current.play();
+    }
+  }, [currentStep]);
 
   useEffect(() => {
     if (searchQuery.trim() === "") {
@@ -377,7 +385,14 @@ export default function AccountSetupScreen({ navigation }) {
               </Text>
             </View>
             <View style={styles.imageSmallContainerSetup}>
-              <Image source={require("../../assets/images/mascot.png")} style={styles.lottieSmallSetup} />
+              <LottieView
+                ref={buddyAnimationRef}
+                source={require("../../assets/animations/mascot-talking.json")} 
+                autoPlay={false}
+                loop={!isBuddyTextFullyTyped} // 🚀 Maakt zijn huidige beweging netjes af en stopt
+                renderMode="SOFTWARE"
+                style={styles.lottieSmallSetup}
+              />
             </View>
           </View>
         );

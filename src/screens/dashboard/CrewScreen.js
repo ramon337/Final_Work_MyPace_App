@@ -11,6 +11,7 @@ import { supabase } from "../../lib/supabase";
 import { ensureFourteenDaySchedule, processNachtCheck } from "../../services/streakService";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import CustomButton from "../../components/ui/CustomButton";
+import LottieView from "lottie-react-native";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -45,6 +46,8 @@ export default function CrewScreen({ navigation }) {
   // Crew Profiles voor avatars
   const [crewProfilesMap, setCrewProfilesMap] = useState({});
   const [crewMembersList, setCrewMembersList] = useState([]);
+
+  const buddyAnimationRef = useRef(null);
 
   useEffect(() => {
     if (!userLoading) {
@@ -188,6 +191,18 @@ const [showTutorial, setShowTutorial] = useState(false);
       setShowTutorial(false);
     });
   };
+
+// 🚀 Start de animatie als de pop-up opent, pauzeer hem zodra de tekst af is
+  useEffect(() => {
+    if (buddyAnimationRef.current) {
+      if (showTutorial && !isTextFullyTyped) {
+        buddyAnimationRef.current.play();
+      } else {
+        // Zodra de tekst klaar is (of de pop-up sluit), stopt hij met loopen
+        // We gebruiken geen .pause() hier om hem netjes te laten eindigen
+      }
+    }
+  }, [showTutorial, isTextFullyTyped]);
 
   useEffect(() => {
     const checkTokenPopup = async () => {
@@ -674,7 +689,14 @@ const [showTutorial, setShowTutorial] = useState(false);
               </View>
               
               <View style={styles.buddyRow}>
-                <Image source={require("../../assets/images/mascot.png")} style={styles.lottieExtraLargeSetup} />
+                <LottieView
+                ref={buddyAnimationRef}
+                source={require("../../assets/animations/mascot-talking.json")}
+                autoPlay={false}
+                loop={!isTextFullyTyped}
+                renderMode="SOFTWARE"
+                style={styles.lottieExtraLargeSetup}
+              />
               </View>
 
             </SafeAreaView>
