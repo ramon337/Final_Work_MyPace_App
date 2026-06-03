@@ -1,5 +1,5 @@
 // src/screens/onboarding/AccountSetupScreen.js
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { StyleSheet, Text, View, TouchableOpacity, TextInput, Image, FlatList, ActivityIndicator, Modal } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "../../theme/colors";
@@ -33,6 +33,44 @@ export default function AccountSetupScreen({ navigation }) {
   
   // 🚀 State voor de waarschuwing popup
   const [showWarningModal, setShowWarningModal] = useState(false);
+  // 🚀 BUDDY TYPEWRITER STATES (Alleen voor stap 4)
+  const [displayedBuddyText, setDisplayedBuddyText] = useState("");
+  const [isBuddyTextFullyTyped, setIsBuddyTextFullyTyped] = useState(true);
+  const typewriterTimer = useRef(null);
+  const exactTextRef = useRef("");
+
+  useEffect(() => {
+    if (currentStep === 4) {
+      const firstName = name ? name.split(" ")[0] : "there";
+      const fullText = `Hi ${firstName}, enough about you now!\n\nIn MyPace it's all about teamwork and motivation. Let's join a crew so you can achieve goals together!`;
+
+      setDisplayedBuddyText("");
+      exactTextRef.current = "";
+      setIsBuddyTextFullyTyped(false);
+      
+      if (typewriterTimer.current) clearInterval(typewriterTimer.current);
+
+      const textArray = Array.from(fullText);
+      let index = 0;
+
+      typewriterTimer.current = setInterval(() => {
+        if (index < textArray.length) {
+          exactTextRef.current += textArray[index];
+          setDisplayedBuddyText(exactTextRef.current);
+          index++;
+        } else {
+          clearInterval(typewriterTimer.current);
+          setIsBuddyTextFullyTyped(true);
+        }
+      }, 15);
+    } else {
+      setIsBuddyTextFullyTyped(true); // Voor alle andere stappen is de tekst "klaar"
+    }
+
+    return () => {
+      if (typewriterTimer.current) clearInterval(typewriterTimer.current);
+    };
+  }, [currentStep, name]);
 
   const internalSteps = 6;
   const displayTotalSteps = 5;
@@ -115,6 +153,7 @@ export default function AccountSetupScreen({ navigation }) {
       }
       setStepOneError("");
     }
+    if (currentStep === 4 && !isBuddyTextFullyTyped) return;
 
     if (currentStep < internalSteps) {
       setCurrentStep(currentStep + 1);
@@ -245,8 +284,12 @@ export default function AccountSetupScreen({ navigation }) {
     }
 
     const showContinue =
-      currentStep === 1 || (currentStep === 2 && avatarUri !== null) || (currentStep === 3 && selectedGoal !== null) || currentStep === 4 || (currentStep === 5 && selectedCrewAction !== null) || (currentStep === 6 && canFinishStep6);
-
+    currentStep === 1 || 
+    (currentStep === 2 && avatarUri !== null) || 
+    (currentStep === 3 && selectedGoal !== null) || 
+    (currentStep === 4 && isBuddyTextFullyTyped) || // 🚀 Knop blijft onzichtbaar tot hij klaar is!
+    (currentStep === 5 && selectedCrewAction !== null) || 
+    (currentStep === 6 && canFinishStep6);
     return (
       <View style={styles.footerWrapper}>
         <View style={styles.primaryButtonSlot}>{showContinue && <CustomButton title={currentStep === internalSteps ? "Finish Setup" : "Continue"} type="primary" onPress={handleNext} />}</View>
@@ -327,13 +370,10 @@ export default function AccountSetupScreen({ navigation }) {
         );
       case 4:
         return (
-          // 🚀 VERNIEUWD DESIGN: MeetBuddyScreen stijl voor Case 4 (Buddy Intro)
           <View style={[styles.content, styles.buddyScreenContainer]}>
             <View style={styles.speechBubbleCardSetup}>
               <Text style={styles.bodyTextBubble}>
-                Hi <Text style={{ color: COLORS.primaryOrange, fontFamily: "Baloo-Bold", fontSize: 18 }}>{firstName}</Text>, enough about you now!
-                {"\n\n"}
-                In MyPace it's all about teamwork and motivation. Let's join a crew so you can achieve goals together!
+                {displayedBuddyText}
               </Text>
             </View>
             <View style={styles.imageSmallContainerSetup}>
@@ -529,7 +569,7 @@ const styles = StyleSheet.create({
   
   // 🚀 NIEUWE STYLES VOOR CASE 4 (BUDDY)
   buddyScreenContainer: { flex: 1, justifyContent: "center", marginTop: 20 },
-  speechBubbleCardSetup: { backgroundColor: COLORS.cardBackground, padding: 24, borderRadius: 20, borderBottomLeftRadius: 4, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)', width: '100%', marginBottom: 20 },
+  speechBubbleCardSetup: { backgroundColor: COLORS.cardBackground, padding: 24, borderRadius: 20, borderBottomLeftRadius: 4, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)', width: '100%', marginBottom: 20, minHeight: 180 },
   bodyTextBubble: { fontSize: 16, fontFamily: "Inter", color: COLORS.textLight, lineHeight: 24, textAlign: "left" },
   imageSmallContainerSetup: { width: "100%", alignItems: "flex-start", paddingLeft: 10 },
   lottieSmallSetup: { width: 230, height: 230, resizeMode: "contain" },

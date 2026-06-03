@@ -1,7 +1,7 @@
 // src/screens/main/CrewScreen.js
 import React, { useState, useEffect, useRef } from "react";
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator, Image, Modal, ImageBackground, Animated } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context"; // Gelinkt aan je vorige fix!
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "../../theme/colors";
 import * as WebBrowser from "expo-web-browser";
@@ -21,9 +21,9 @@ const stravaEndpoints = {
 
 export default function CrewScreen({ navigation }) {
   const streakAnimation = useRef(new Animated.Value(1)).current;
+
   // --- 1. USER CONTEXT & STATES ---
   const { crewData, loading: userLoading, refreshCrewData } = useUser();
-  // Activity log states
   const [activities, setActivities] = useState([]);
 
   // Paginering logica
@@ -33,7 +33,6 @@ export default function CrewScreen({ navigation }) {
   const [isMoreLoading, setIsMoreLoading] = useState(false);
 
   // Streak Engine states
-  // 🚀 FIX: Standaard op false gezet zodat hij nooit uit het niets de UI blokkeert
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [weekAssignments, setWeekAssignments] = useState([]);
   const [todayAssignment, setTodayAssignment] = useState(null);
@@ -85,6 +84,111 @@ export default function CrewScreen({ navigation }) {
     return () => clearInterval(interval);
   }, []);
 
+  // --- TYPEWRITER STATES ---
+const [showTutorial, setShowTutorial] = useState(false); 
+  const tutorialOpacity = useRef(new Animated.Value(0)).current;
+  
+  const [displayedText, setDisplayedText] = useState("");
+  const [isTextFullyTyped, setIsTextFullyTyped] = useState(false);
+  const typewriterTimer = useRef(null);
+  const exactTextRef = useRef(""); 
+
+  const tutorialText = "Everyone's weekly goal is used to create the relay schedule. On each day, one or more crew members may be assigned to run. Complete your run on your assigned day to keep the streak alive.";
+
+  // ==========================================
+  // 🚀 2. CHECK TUTORIAL STATUS BIJ OPSTARTEN
+  // ==========================================
+  useEffect(() => {
+    let timeoutId; 
+
+    const checkTutorialStatus = async () => {
+      if (!crewData?.id) return;
+
+      // 🚀 NIEUWE CHECK: Stop hier direct als de streak nog inactief is (0)
+      if (crewData.current_streak === 0) return;
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Unieke sleutel per gebruiker en per crew
+      const statusKey = `@schedule_tutorial_seen_${user.id}_${crewData.id}`;
+      const hasSeen = await AsyncStorage.getItem(statusKey);
+
+      // 🔥 TEST MODE: Haal de // hieronder weg om de pop-up ALTIJD te tonen als de streak > 0 is:
+      // timeoutId = setTimeout(() => openTutorial(), 2000); return;
+
+      if (!hasSeen) {
+        // Wacht 2 seconden nadat het scherm is ingeladen (of de streak zojuist actief werd)
+        timeoutId = setTimeout(() => {
+          openTutorial();
+        }, 2000);
+      }
+    };
+    
+    checkTutorialStatus();
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [crewData?.id, crewData?.current_streak]); // 🚀 current_streak hier is super belangrijk!
+
+  // ==========================================
+  // 🚀 3. TYPEWRITER EFFECT LOGICA
+  // ==========================================
+  useEffect(() => {
+    if (showTutorial) {
+      setDisplayedText("");
+      exactTextRef.current = ""; 
+      setIsTextFullyTyped(false);
+      
+      if (typewriterTimer.current) clearInterval(typewriterTimer.current);
+
+      const textArray = Array.from(tutorialText);
+      let index = 0;
+
+      typewriterTimer.current = setInterval(() => {
+        if (index < textArray.length) {
+          exactTextRef.current += textArray[index]; 
+          setDisplayedText(exactTextRef.current);   
+          index++;
+        } else {
+          clearInterval(typewriterTimer.current);
+          setIsTextFullyTyped(true); 
+        }
+      }, 15); 
+    }
+
+    return () => {
+      if (typewriterTimer.current) clearInterval(typewriterTimer.current);
+    };
+  }, [showTutorial]);
+
+  // ==========================================
+  // 🚀 4. TUTORIAL SLUITEN
+  // ==========================================
+  const openTutorial = () => {
+    setShowTutorial(true);
+    Animated.timing(tutorialOpacity, {
+      toValue: 1, duration: 300, useNativeDriver: true
+    }).start();
+  };
+
+  const handleTutorialNext = async () => {
+    if (!isTextFullyTyped) return; // Klikken blokkeren tot hij klaar is met typen
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    
+    const statusKey = `@schedule_tutorial_seen_${user.id}_${crewData.id}`;
+    await AsyncStorage.setItem(statusKey, 'completed');
+
+    Animated.timing(tutorialOpacity, {
+      toValue: 0, duration: 200, useNativeDriver: true
+    }).start(() => {
+      setShowTutorial(false);
+    });
+  };
+
   useEffect(() => {
     const checkTokenPopup = async () => {
       if (!crewData?.id || weekAssignments.length === 0) return;
@@ -92,7 +196,7 @@ export default function CrewScreen({ navigation }) {
       const offset = new Date().getTimezoneOffset() * 60000;
       const todayStr = new Date(new Date() - offset).toISOString().split("T")[0];
 
-        const yesterday = new Date(new Date() - offset);
+      const yesterday = new Date(new Date() - offset);
       yesterday.setDate(yesterday.getDate() - 1);
       const yesterdayStr = yesterday.toISOString().split("T")[0];
 
@@ -104,7 +208,7 @@ export default function CrewScreen({ navigation }) {
 
         if (!hasSeen) {
           setShowTokenModal(true);
-          await AsyncStorage.setItem(storageKey, "true"); // Zet het vinkje dat je hem zag
+          await AsyncStorage.setItem(storageKey, "true");
         }
       }
     };
@@ -147,7 +251,6 @@ export default function CrewScreen({ navigation }) {
       return;
     }
     try {
-      // 🚀 FIX: Alleen laadstatus aanzetten als we nóg helemaal geen data hebben (eerste opstart)
       if (weekAssignments.length === 0) {
         setScheduleLoading(true);
       }
@@ -338,9 +441,6 @@ export default function CrewScreen({ navigation }) {
     }
   };
 
-  // --- 5. UI RENDER ---
-
-  // A. Toon het laadscherm UITSLUITEND bij de allereerste opstart.
   if (isFirstLoad) {
     return (
       <View style={styles.loadingContainer}>
@@ -349,7 +449,6 @@ export default function CrewScreen({ navigation }) {
     );
   }
 
-  // B. EMPTY STATE ALS DE USER GEEN CREW HEEFT
   if (!crewData || !crewData.id) {
     return (
       <SafeAreaView style={styles.emptyCrewContainer}>
@@ -399,21 +498,12 @@ export default function CrewScreen({ navigation }) {
         <View style={{ flex: 1 }} />
 
         <View style={styles.bannerTextContainer}>
-          {/* We wrappen het getal in een Animated.Text */}
-          <Animated.Text
-            style={[
-              styles.bannerStreakNumber,
-              { transform: [{ scale: streakAnimation }] }, // De bounce-schaal
-            ]}
-          >
-            {crewData?.current_streak || 0}
-          </Animated.Text>
+          <Animated.Text style={[styles.bannerStreakNumber, { transform: [{ scale: streakAnimation }] }]}>{crewData?.current_streak || 0}</Animated.Text>
 
           <Text style={styles.bannerStreakLabel}>{crewData?.current_streak === 1 ? "Day" : "Days"}</Text>
         </View>
       </ImageBackground>
 
-      {/* CONDITIONELE WEERGAVE OP BASIS VAN DE STREAK */}
       {crewData?.current_streak === 0 ? (
         <View style={styles.startStreakCard}>
           <View style={styles.rocketCircle}>
@@ -493,12 +583,10 @@ export default function CrewScreen({ navigation }) {
                   dayIcon = "remove-circle-outline";
                   lopers = "Crew not formed yet";
                 } else if (day.assignment_date < todayStr && !isPartOfCurrentStreak) {
-                  // 🚀 FIX: Verleden dagen buiten de actieve streak
                   dayStatusColor = "#475569";
                   dayIcon = "close";
                   lopers = "No run logged";
                 } else if (day.status === "saved_by_token") {
-                  // 🚀 FIX: Token status
                   dayStatusColor = COLORS.secondaryYellow;
                   dayIcon = "shield-checkmark";
                   lopers = "Rest day token saved the streak";
@@ -511,7 +599,6 @@ export default function CrewScreen({ navigation }) {
                   dayIcon = "close-circle";
                   lopers = day.is_rest_day ? "Rest Day" : day.assigned_users?.map((id) => crewProfilesMap[id]).join(" & ") || "Failed";
                 } else {
-                  // OUDE CODE ONDERAAN BEHOUDEN (Voor vandaag & toekomst)
                   if (day.is_rest_day) {
                     dayStatusColor = "#3498db";
                     dayIcon = "snow";
@@ -553,45 +640,52 @@ export default function CrewScreen({ navigation }) {
           </View>
         </View>
       </Modal>
+
       <Modal visible={showTokenModal} animationType="fade" transparent={true}>
         <View style={[styles.modalOverlay, { justifyContent: "center", alignItems: "center" }]}>
-          <View style={[
-            styles.modalContent, 
-            { 
-              width: "90%", // 🚀 Modal iets breder gemaakt
-              borderRadius: 24, 
-              padding: 30, 
-              paddingTop: 45, // 🚀 Extra ruimte bovenaan zodat de tekst niet tegen het kruisje plakt
-              alignItems: "center",
-              position: "relative" // Cruciaal voor het kruisje rechtsboven
-            }
-          ]}>
-            
-            {/* 🚀 HET KRUISJE RECHTSBOVEN */}
-            <TouchableOpacity 
-              style={{ position: "absolute", top: 15, right: 15, zIndex: 10, padding: 5 }}
-              activeOpacity={0.7}
-              onPress={() => setShowTokenModal(false)}
-            >
+          <View style={[styles.modalContent, { width: "90%", borderRadius: 24, padding: 30, paddingTop: 45, alignItems: "center", position: "relative" }]}>
+            <TouchableOpacity style={{ position: "absolute", top: 15, right: 15, zIndex: 10, padding: 5 }} activeOpacity={0.7} onPress={() => setShowTokenModal(false)}>
               <Ionicons name="close" size={28} color={COLORS.textMuted} />
             </TouchableOpacity>
 
-            {/* 🚀 DE GROTE TOKEN AFBEELDING */}
-            <Image 
-              style={{ width: 160, height: 160, marginBottom: 20, resizeMode: "contain" }} 
-              source={require("../../assets/images/rest-day-token-icon.png")}
-            />
-            
-            <Text style={[styles.modalTitle, { textAlign: "center", fontSize: 28 }]}>
-              Streak Saved!
-            </Text>
-            
-            <Text style={[styles.message, { color: COLORS.textMuted, textAlign: "center", marginTop: 10, marginBottom: 10, lineHeight: 24 }]}>
-              The crew didn't run yesterday. But don't worry, a Rest Day Token was used and your streak is safe!
-            </Text>
-            
+            <Image style={{ width: 160, height: 160, marginBottom: 20, resizeMode: "contain" }} source={require("../../assets/images/rest-day-token-icon.png")} />
+
+            <Text style={[styles.modalTitle, { textAlign: "center", fontSize: 28 }]}>Streak Saved!</Text>
+
+            <Text style={[styles.message, { color: COLORS.textMuted, textAlign: "center", marginTop: 10, marginBottom: 10, lineHeight: 24 }]}>The crew didn't run yesterday. But don't worry, a Rest Day Token was used and your streak is safe!</Text>
           </View>
         </View>
+      </Modal>
+
+      {/* 🚀 DE VERNIEUWDE EN SIMPELE SCHEDULE TUTORIAL MODAL */}
+      <Modal visible={showTutorial} animationType="none" transparent={true}>
+        <Animated.View style={{ flex: 1, opacity: tutorialOpacity }}>
+          <TouchableOpacity 
+            style={styles.tutorialOverlay} 
+            activeOpacity={1} 
+            onPress={handleTutorialNext}
+          >
+            <SafeAreaView style={styles.buddyTutorialContainer}>
+              
+              <View style={styles.speechBubbleCardSetup}>
+                <Text style={styles.bodyTextBubble}>
+                  {displayedText}
+                </Text>
+              </View>
+              
+              <View style={styles.buddyRow}>
+                <Image source={require("../../assets/images/mascot.png")} style={styles.lottieExtraLargeSetup} />
+              </View>
+
+            </SafeAreaView>
+
+            {/* Toont de hint pas als de tekst klaar is met typen */}
+            {isTextFullyTyped && (
+              <Text style={styles.tapToContinueText}>Tap anywhere to continue...</Text>
+            )}
+
+          </TouchableOpacity>
+        </Animated.View>
       </Modal>
 
       {/* STRAVA SYNC BUTTON */}
@@ -634,7 +728,7 @@ export default function CrewScreen({ navigation }) {
                   <Ionicons name={iconName} size={16} color="#FFF" />
                 </View>
                 <View style={styles.activityDetails}>
-                  <Text style={styles.activityUser}>{renderActivityText(item)}</Text>
+                  <View style={styles.activityUser}>{renderActivityText(item)}</View>
                   <Text style={styles.activityMeta}>{formatRelativeTime(item.created_at)}</Text>
                 </View>
               </View>
@@ -642,7 +736,6 @@ export default function CrewScreen({ navigation }) {
           })
         )}
 
-        {/* VIEW MORE BUTTON */}
         {hasMoreActivities && (
           <TouchableOpacity style={styles.viewMoreButton} activeOpacity={0.7} onPress={() => setActivitiesPage((prev) => prev + 1)} disabled={isMoreLoading}>
             {isMoreLoading ? <ActivityIndicator size="small" color={COLORS.secondaryYellow} /> : <Text style={styles.viewMoreText}>View more &gt;</Text>}
@@ -664,46 +757,11 @@ const styles = StyleSheet.create({
   avatar: { width: 40, height: 40, borderRadius: 20, justifyContent: "center", alignItems: "center", borderWidth: 3, borderColor: COLORS.background, overflow: "hidden" },
   avatarImage: { width: "100%", height: "100%" },
   avatarText: { color: "#FFF", fontSize: 14, fontWeight: "bold" },
-
-  bannerHeader: {
-    marginBottom: 10,
-    paddingHorizontal: 5,
-  },
-  illustratorBannerPlaceholder: {
-    backgroundColor: "#3a3f58",
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 20,
-    height: 140,
-    overflow: "hidden",
-    flexDirection: "row",
-    borderColor: "#3a3f58",
-    borderWidth: 3,
-  },
-  bannerTextContainer: {
-    flex: 1,
-    alignItems: "center",
-    flexDirection: "row",
-    marginLeft: 10,
-  },
-  bannerStreakNumber: {
-    color: COLORS.textLight,
-    fontFamily: "Baloo-Bold",
-    fontSize: 65,
-    lineHeight: 60,
-    paddingTop: 40,
-  },
-  bannerStreakLabel: {
-    color: "#FFF",
-    fontFamily: "Baloo-Bold",
-    fontSize: 40,
-    fontWeight: "bold",
-    textTransform: "uppercase",
-    letterSpacing: 2,
-    marginTop: 17,
-    marginLeft: 10,
-  },
-
+  bannerHeader: { marginBottom: 10, paddingHorizontal: 5 },
+  illustratorBannerPlaceholder: { backgroundColor: "#3a3f58", borderRadius: 16, padding: 20, marginBottom: 20, height: 140, overflow: "hidden", flexDirection: "row", borderColor: "#3a3f58", borderWidth: 3 },
+  bannerTextContainer: { flex: 1, alignItems: "center", flexDirection: "row", marginLeft: 10 },
+  bannerStreakNumber: { color: COLORS.textLight, fontFamily: "Baloo-Bold", fontSize: 65, lineHeight: 60, paddingTop: 40 },
+  bannerStreakLabel: { color: "#FFF", fontFamily: "Baloo-Bold", fontSize: 40, fontWeight: "bold", textTransform: "uppercase", letterSpacing: 2, marginTop: 17, marginLeft: 10 },
   startStreakCard: { backgroundColor: "rgba(231, 84, 56, 0.1)", borderRadius: 20, padding: 25, marginBottom: 25, alignItems: "center", borderWidth: 1, borderColor: "rgba(231, 84, 56, 0.3)" },
   rocketCircle: {
     width: 60,
@@ -755,10 +813,8 @@ const styles = StyleSheet.create({
   activityAction: { fontWeight: "normal", color: "#cbd5e1" },
   activityMeta: { color: COLORS.textMuted, fontFamily: "Inter", fontSize: 12 },
   activityHighlight: { color: COLORS.secondaryYellow, fontFamily: "Baloo-Bold", fontSize: 16 },
-
   viewMoreButton: { padding: 10, alignItems: "center", marginTop: 5, minHeight: 40 },
   viewMoreText: { color: COLORS.secondaryYellow, fontFamily: "Inter", fontWeight: "bold", fontSize: 14 },
-
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "flex-end" },
   modalContent: { backgroundColor: COLORS.cardBackground, borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 25, maxHeight: "80%" },
   modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 },
@@ -775,8 +831,6 @@ const styles = StyleSheet.create({
   weekIconCol: { width: 40, alignItems: "center" },
   weekNameCol: { flex: 1, paddingLeft: 10 },
   weekRunnerText: { color: COLORS.textLight, fontFamily: "Inter", fontSize: 16, fontWeight: "600" },
-
-  // --- EMPTY STATE STYLES ---
   emptyCrewContainer: { flex: 1, backgroundColor: COLORS.background },
   emptyCrewContent: { flex: 1, justifyContent: "center", alignItems: "center", padding: 30 },
   emptyCrewTitle: { color: COLORS.textLight, fontFamily: "Baloo-Bold", fontSize: 32, marginTop: 20, marginBottom: 10, textAlign: "center" },
@@ -795,4 +849,26 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   primaryButtonText: { color: "#FFF", fontFamily: "Inter", fontWeight: "bold", fontSize: 18 },
+
+// --- TUTORIAL STYLES ---
+  tutorialOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.90)', justifyContent: 'center', alignItems: 'center', position: 'relative' },
+  buddyTutorialContainer: { width: '85%', alignItems: 'center' },
+  speechBubbleCardSetup: { 
+    backgroundColor: COLORS.cardBackground, 
+    padding: 24, 
+    borderRadius: 20, 
+    borderBottomLeftRadius: 4, 
+    borderWidth: 1, 
+    borderColor: 'rgba(255,255,255,0.1)', 
+    width: '100%', 
+    marginBottom: 15, 
+    shadowColor: '#000', 
+    shadowOpacity: 0.3, 
+    shadowRadius: 5,
+    minHeight: 200 // 🚀 NIEUW: Houdt de box netjes op formaat, geen verspringende schermen meer!
+  },
+  bodyTextBubble: { fontSize: 16, fontFamily: "Inter", color: COLORS.textLight, lineHeight: 24 },
+  buddyRow: { width: '100%', alignItems: 'flex-start', marginBottom: 10 },
+  lottieExtraLargeSetup: { width: 220, height: 220, resizeMode: "contain" }, 
+  tapToContinueText: { color: 'rgba(255,255,255,0.5)', fontFamily: 'Inter', fontSize: 14, fontStyle: 'italic', position: 'absolute', bottom: 40, alignSelf: 'center' },
 });

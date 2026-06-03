@@ -10,6 +10,46 @@ import cheerAnimation from "../../assets/animations/mascot-cheering.json";
 
 export default function MeetBuddyScreen({ navigation }) {
   const [currentPhase, setCurrentPhase] = useState(0);
+  // 🚀 TYPEWRITER STATES
+  const [displayedText, setDisplayedText] = useState("");
+  const [isTextFullyTyped, setIsTextFullyTyped] = useState(false);
+  const typewriterTimer = useRef(null);
+  const exactTextRef = useRef("");
+
+  // 🚀 TYPEWRITER LOGICA
+  useEffect(() => {
+    const current = phases[currentPhase];
+    
+    // Als er geen tekst is (zoals in de allereerste fase), blokkeer niets
+    if (!current.body) {
+      setIsTextFullyTyped(true);
+      setDisplayedText("");
+      return;
+    }
+
+    setDisplayedText("");
+    exactTextRef.current = "";
+    setIsTextFullyTyped(false);
+    if (typewriterTimer.current) clearInterval(typewriterTimer.current);
+
+    const textArray = Array.from(current.body);
+    let index = 0;
+
+    typewriterTimer.current = setInterval(() => {
+      if (index < textArray.length) {
+        exactTextRef.current += textArray[index];
+        setDisplayedText(exactTextRef.current);
+        index++;
+      } else {
+        clearInterval(typewriterTimer.current);
+        setIsTextFullyTyped(true);
+      }
+    }, 15); // Typsnelheid
+
+    return () => {
+      if (typewriterTimer.current) clearInterval(typewriterTimer.current);
+    };
+  }, [currentPhase]);
   const animationRef = useRef(null);
 
   const phases = [
@@ -46,7 +86,10 @@ export default function MeetBuddyScreen({ navigation }) {
     return () => clearTimeout(timer);
   }, [currentPhase]);
 
-  const handleNext = () => {
+ const handleNext = () => {
+    // 🚀 Blokkeer klikken zolang hij nog aan het praten is
+    if (!isTextFullyTyped) return;
+
     if (currentPhase < phases.length - 1) {
       setCurrentPhase(currentPhase + 1);
     } else {
@@ -83,7 +126,7 @@ export default function MeetBuddyScreen({ navigation }) {
         {current.body && (
           <View style={styles.bubbleContainer}>
             <View style={styles.speechBubbleCard}>
-              <Text style={styles.body}>{current.body}</Text>
+              <Text style={styles.body}>{displayedText}</Text>
             </View>
           </View>
         )}
@@ -101,8 +144,10 @@ export default function MeetBuddyScreen({ navigation }) {
         </View>
       </View>
 
-      <View style={styles.buttonContainer}>
-        <CustomButton title={current.buttonText} type="primary" onPress={handleNext} />
+      <View style={[styles.buttonContainer, { minHeight: 60 }]}>
+        {isTextFullyTyped && (
+          <CustomButton title={current.buttonText} type="primary" onPress={handleNext} />
+        )}
       </View>
     </SafeAreaView>
   );
@@ -116,7 +161,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 32, fontFamily: "Baloo-Bold", color: COLORS.primaryOrange, textAlign: "center", lineHeight: 38, marginTop: 20 },
   contentWrapper: { flex: 1, width: '100%', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 },
   bubbleContainer: { width: '100%', alignItems: 'center', zIndex: 10, marginBottom: 20, marginTop: 40 }, // Toegevoegde marginTop compenseert voor missende titel
-  speechBubbleCard: { backgroundColor: COLORS.cardBackground, padding: 24, borderRadius: 20, borderBottomLeftRadius: 4, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)', width: '95%', justifyContent: 'center' },
+speechBubbleCard: { backgroundColor: COLORS.cardBackground, padding: 24, borderRadius: 20, borderBottomLeftRadius: 4, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)', width: '95%', justifyContent: 'flex-start', minHeight: 160 },
   body: { fontSize: 16, fontFamily: "Inter", textAlign: "left", color: COLORS.textLight, lineHeight: 24 },
   imageContainer: { width: "100%" },
   imageLargeContainer: { justifyContent: "center", alignItems: "center", flex: 1 },
@@ -124,4 +169,5 @@ const styles = StyleSheet.create({
   lottieLarge: { width: 450, height: 450 }, // 🚀 Nog groter gemaakt (was 320)
   lottieSmall: { width: 250, height: 250}, // 🚀 Iets groter gemaakt (was 200)
   buttonContainer: { width: "90%", marginBottom: 20 },
+  
 });
