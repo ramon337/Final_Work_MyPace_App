@@ -1,55 +1,52 @@
-# Welcome to your Expo app 👋
+# MyPace – Sociaal Hardloopplatform
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+MyPace is een innovatieve mobiele applicatie ontworpen voor de ‘Soft Mover’. De app draait niet om harde prestatiedata, maar om sociale verantwoordelijkheid en teamwork via een estafette-gebaseerde Relay Streak.
 
-## Get started
+## Kernfunctionaliteiten
 
-1. Install dependencies
+- Relay Streak: Houd de estafette levend met je Crew.
+- Strava Integratie: Synchroniseer runs naadloos via OAuth2.
+- Crew Quests: Werk samen aan epische uitdagingen, waarbij minuten tellen in plaats van snelheid.
+- Buddy-Feedback: Dynamische animaties geven direct inzicht in de impact van jouw run op de streak.
 
-   ```bash
-   npm install
-   ```
+## Mappenstructuur
+- /assets: Statische bestanden (afbeeldingen, fonts, Lottie-animaties).
+- /components: Herbruikbare UI-componenten.
+- /context: Globaal state management (UserContext.js).
+- /lib: Configuratie voor de Supabase client.
+- /screens: App-schermen opgedeeld per user flow.
+- /services: Externe bedrijfslogica en algoritmes (streakService.js).
 
-2. Start the app
+## Installatie & Ontwikkeling
 
-   ```bash
-   npx expo start
-   ```
+1. Vereisten
+Zorg dat Node.js en npm op je systeem zijn geïnstalleerd.
 
-In the output, you'll find options to open the app in a
+2. Setup
+Clone de repository en installeer alle benodigde packages:
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+git clone [https://github.com/ramon337/Final_Work_MyPace_App.git]
+cd mypace-app
+npm install
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+3. Starten
+Start de ontwikkelomgeving via Expo:
 
-## Get a fresh project
+npx expo start
 
-When you're ready, run:
+Testen: Open de Expo Go app op je fysieke smartphone (iOS of Android) en scan de QR-code die in je terminal verschijnt. Zorg ervoor dat je telefoon en computer met hetzelfde wifi-netwerk zijn verbonden.
 
-```bash
-npm run reset-project
-```
-
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## Gebruikte Technologieën
+Framework: React Native met Expo.
+Database: Supabase.
+Integraties: Strava API (OAuth2).
+Animaties: Lottie React Native.
+Navigatie: React Navigation (Stack & Bottom Tabs).
 
 ## useful sources
 [getting to know react native](https://reactnative.dev/docs/tutorial)
 [getting to know expo](https://youtu.be/0-S5a0eXPoc?si=VgUcWfueLcwiSFUA)
-https://react-svgr.com/playground/?native=true: om svg naar native te zetten
+[converting SVG to Native](https://react-svgr.com/playground/?native=true)
+[Lottie documentation](https://lottiefiles.github.io/lottie-docs/)
+
+[AI chat I used throughout the whole project](https://gemini.google.com/share/94c82b3a4dfa)
